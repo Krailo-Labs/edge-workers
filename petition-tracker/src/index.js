@@ -57,18 +57,20 @@ async function fetchPetitionCount() {
 }
 
 async function sendTelegramAlert(env, currentCount, diff, minutesPassed) {
+  console.log("DEBUG TOKEN:", env.TG_TOKEN ? "Завантажено (" + env.TG_TOKEN.length + " симв.)" : "UNDEFINED ❌");
+  console.log("DEBUG CHAT_ID:", env.TG_CHAT_ID || "UNDEFINED ❌");
   const criticalEmoji = getCriticalityEmoji(currentCount);
   const fleeEmoji = "🧳🏃‍♂️💨";
   
   // Тепер текст повністю динамічний і показує реальний час
   const messageText = `${criticalEmoji} ${fleeEmoji}\n\nПідписів зібрано: ${currentCount} (+${diff} за останні ${minutesPassed} хв)`;
 
-  const tgUrl = `https://api.telegram.org/bot${env.TG_TOKEN}/sendMessage`;
+  const tgUrl = `https://api.telegram.org/bot${env.TG_TOKEN.toString()}/sendMessage`;
   const response = await fetch(tgUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      chat_id: env.TG_CHAT_ID,
+      chat_id: env.TG_CHAT_ID.toString(),
       text: messageText
     })
   });
