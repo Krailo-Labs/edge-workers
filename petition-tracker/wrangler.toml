@@ -5,6 +5,11 @@ compatibility_date = "2024-02-23"
 [triggers]
 crons = ["*/1 * * * *"]
 
+[observability]
+enabled = true
+head_sampling_rate = 1.0
+
+
 [[kv_namespaces]]
 binding = "PETITION_KV"
 id = "a46a0884847e42be8d77c6b8310ffbd3"
