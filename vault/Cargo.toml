@@ -1,0 +1,21 @@
+[package]
+name = "vault"
+version = "0.1.0"
+edition = "2021"
+description = "Serverless Secret & Configuration Manager for Cloudflare Edge"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+worker = "0.3"                                     # Cloudflare SDK
+serde = { version = "1.0", features = ["derive"] } # Парсинг JSON
+serde_json = "1.0"
+toml = "0.8"                                       # Декларативні конфіги
+aes-gcm = "0.10"                                   # Апаратно-прискорене шифрування
+zeroize = { version = "1.7", features = ["serde"] }# Зачистка пам'яті (Memory Zeroization)
+
+# WASM-специфічний адаптер для криптографії
+[dependencies.getrandom]
+version = "0.2"
+features = ["js"]
