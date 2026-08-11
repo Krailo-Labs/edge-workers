@@ -20,7 +20,7 @@ export default {
       const state = JSON.parse(stateStr);
       const diff = currentCount - state.count;
 
-      if (diff >= 10) {
+      if (diff >= 0) {
         // Вираховуємо, скільки реально хвилин пройшло з минулого алерту
         const minutesPassed = Math.round((now - state.timestamp) / 60000) || 1;
 
