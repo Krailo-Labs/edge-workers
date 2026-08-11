@@ -9,7 +9,6 @@ crons = ["*/1 * * * *"]
 enabled = true
 head_sampling_rate = 1.0
 
-
 [[kv_namespaces]]
 binding = "PETITION_KV"
 id = "a46a0884847e42be8d77c6b8310ffbd3"
