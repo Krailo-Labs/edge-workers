@@ -2,6 +2,7 @@ export default {
   async scheduled(event, env, ctx) {
     try {
       const currentCount = await fetchPetitionCount();
+      console.log("Отримана кількість підписів:", currentCount);
       if (typeof currentCount !== "number") return;
 
       // Беремо об'єкт стейту з KV
