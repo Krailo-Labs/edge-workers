@@ -6,7 +6,9 @@ I am building `krailo-brain` as a long-lived runtime for AI agents.
 
 The goal is not to build another chatbot.
 
-The goal is to build an environment where an AI system can maintain identity, durable knowledge, project context, state, tools, and long-running work independently from a single conversation or context window.
+The goal is to build an environment where an AI system can maintain identity,
+durable knowledge, project context, runtime state, tools, and long-running work
+independently from a single conversation or context window.
 
 The underlying LLM is only the reasoning engine.
 
@@ -14,7 +16,7 @@ The underlying LLM is only the reasoning engine.
 
 ---
 
-# 1. The Core Idea
+# 1. Core Idea
 
 A conventional AI interaction usually looks like this:
 
@@ -44,52 +46,65 @@ The context window becomes the practical limit of continuity.
 I want a different architecture:
 
 ```text
-                         ┌──────────────┐
-                         │     USER     │
-                         └──────┬───────┘
-                                │
-                                ▼
-                    ┌──────────────────────┐
-                    │     KRAILO-BRAIN     │
-                    │     AGENT RUNTIME    │
-                    └──────────┬───────────┘
-                               │
-          ┌────────────────────┼────────────────────┐
-          │                    │                    │
-          ▼                    ▼                    ▼
-  ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-  │  PERSONALITY  │    │    MEMORY     │    │   PROJECTS    │
-  │               │    │               │    │               │
-  │ Identity      │    │ Facts         │    │ State         │
-  │ User Profile  │    │ Decisions     │    │ Architecture  │
-  │ Principles    │    │ Events        │    │ Decisions     │
-  │ Behavior      │    │ Instructions  │    │ Constraints   │
-  │               │    │ Tasks         │    │               │
-  └───────┬───────┘    └───────┬───────┘    └───────┬───────┘
-          │                    │                    │
-          └────────────────────┼────────────────────┘
-                               │
-                               ▼
-                    ┌──────────────────────┐
-                    │   CONTEXT ASSEMBLER  │
-                    └──────────┬───────────┘
-                               │
-                               ▼
-                    ┌──────────────────────┐
-                    │     REASONING LLM    │
-                    └──────────┬───────────┘
-                               │
-                 ┌─────────────┼─────────────┐
-                 │             │             │
-                 ▼             ▼             ▼
-            ┌─────────┐   ┌───────────┐   ┌───────────┐
-            │ GitHub  │   │ Cloudflare│   │ Terminal  │
-            └────┬────┘   └─────┬─────┘   └─────┬─────┘
-                 │              │               │
-                 └──────────────┼───────────────┘
-                                │
-                                ▼
-                       REAL ENVIRONMENT
+                              ┌──────────────┐
+                              │     USER     │
+                              └──────┬───────┘
+                                     │
+                                     ▼
+                          ┌──────────────────────┐
+                          │     KRAILO-BRAIN     │
+                          │     AGENT RUNTIME    │
+                          └──────────┬───────────┘
+                                     │
+        ┌────────────────────────────┼────────────────────────────┐
+        │                            │                            │
+        ▼                            ▼                            ▼
+┌───────────────┐           ┌───────────────┐           ┌───────────────┐
+│  PERSONALITY  │           │    MEMORY     │           │   PROJECTS    │
+│               │           │               │           │               │
+│ Identity      │           │ Facts         │           │ State         │
+│ User Profile  │           │ Decisions     │           │ Architecture  │
+│ Principles    │           │ Events        │           │ Decisions     │
+│ Behavior      │           │ Instructions  │           │ Constraints   │
+│               │           │ Tasks         │           │               │
+└───────┬───────┘           └───────┬───────┘           └───────┬───────┘
+        │                            │                            │
+        └────────────────────────────┼────────────────────────────┘
+                                     │
+                                     ▼
+                          ┌──────────────────────┐
+                          │   CONTEXT ASSEMBLER  │
+                          └──────────┬───────────┘
+                                     │
+                                     ▼
+                          ┌──────────────────────┐
+                          │      AI GATEWAY      │
+                          │ Model Control Layer  │
+                          └──────────┬───────────┘
+                                     │
+                      ┌──────────────┼──────────────┐
+                      │              │              │
+                      ▼              ▼              ▼
+               ┌───────────┐   ┌──────────┐   ┌──────────┐
+               │ Workers AI│   │  Claude  │   │   GPT    │
+               └─────┬─────┘   └────┬─────┘   └────┬─────┘
+                     │              │              │
+                     └──────────────┼──────────────┘
+                                    │
+                                    ▼
+                            REASONING RESPONSE
+                                    │
+                    ┌───────────────┼───────────────┐
+                    │               │               │
+                    ▼               ▼               ▼
+               ┌─────────┐    ┌───────────┐   ┌───────────┐
+               │ GitHub  │    │ Cloudflare│   │ Terminal  │
+               └────┬────┘    └─────┬─────┘   └─────┬─────┘
+                    │               │               │
+                    └───────────────┼───────────────┘
+                                    │
+                                    ▼
+                            REAL ENVIRONMENT
 ```
 
 The important distinction is:
@@ -107,6 +122,8 @@ Personality    = who the agent is and how it behaves
 
 Tools          = what the agent can do
 
+AI Gateway     = model-provider control, routing and observability
+
 LLM            = reasoning engine
 ```
 
@@ -114,7 +131,7 @@ LLM            = reasoning engine
 
 # 2. What I Am Building
 
-I want `krailo-brain` to provide six major capabilities:
+I want `krailo-brain` to provide the following capabilities:
 
 ```text
 ┌────────────────────────────────────────────┐
@@ -126,6 +143,7 @@ I want `krailo-brain` to provide six major capabilities:
 │  4. Runtime State & Execution              │
 │  5. Tools & Integrations                   │
 │  6. Model-Agnostic Reasoning               │
+│  7. AI Provider Control & Observability    │
 └────────────────────────────────────────────┘
 ```
 
@@ -152,12 +170,11 @@ edge-workers/
 The root `edge-workers` repository is the ecosystem.
 
 Each directory is an independent project with its own implementation,
-configuration and documentation.
+configuration, documentation, and internal architecture.
 
-`krailo-brain` is not a nested repository and is not a second monorepo.
+`krailo-brain` is not a nested Git repository and is not a second monorepo.
 
-Its purpose is to provide the AI runtime layer for the ecosystem and for
-future projects that need a persistent agent environment.
+It is one project inside the existing `edge-workers` repository.
 
 ---
 
@@ -173,20 +190,22 @@ I do not want to mix:
 * runtime state;
 * tools;
 * external integrations;
+* model-provider logic;
 * implementation code;
 * configuration;
-* tests.
+* tests;
+* architecture documentation.
 
 Each layer has a different responsibility.
 
 The most important architectural rule is:
 
 ```text
-PERSONALITY ≠ MEMORY ≠ PROJECT ≠ RUNTIME ≠ TOOL
+PERSONALITY ≠ MEMORY ≠ PROJECT ≠ RUNTIME ≠ TOOL ≠ MODEL PROVIDER
 ```
 
-This separation makes the system easier to reason about, debug, extend and
-replace.
+This separation makes the system easier to reason about, debug, extend,
+replace, and operate.
 
 ---
 
@@ -289,14 +308,7 @@ This layer defines the stable identity and operating rules of the agent.
 
 ## `SOUL.md`
 
-Defines the fundamental identity of the agent.
-
-It should answer:
-
-* What is this agent?
-* What is its purpose?
-* What kind of continuity should it maintain?
-* What fundamental behavior should remain stable?
+Defines the fundamental identity and purpose of the agent.
 
 ## `USER.md`
 
@@ -310,15 +322,15 @@ It contains information that should remain relevant across sessions.
 
 Defines stable reasoning and operating principles.
 
-These are rules that should not be recreated from memory every time the agent
-starts.
+These are rules that should remain stable and should not have to be
+rediscovered from conversation history.
 
 ## `BEHAVIOR.md`
 
 Defines practical interaction behavior.
 
-This includes communication style, decision boundaries, conflict handling,
-uncertainty handling, and other behavioral rules.
+This includes communication style, uncertainty handling, conflict handling,
+decision boundaries, and interaction policies.
 
 ---
 
@@ -385,7 +397,7 @@ Persistent operational instructions that should influence future work.
 
 ## Tasks
 
-Work that exists independently of the current conversation.
+Work that exists independently from the current conversation.
 
 ## Retrieval
 
@@ -398,8 +410,8 @@ The memory layer should eventually support:
 * updates;
 * supersession;
 * provenance;
-* expiration where appropriate;
-* confidence.
+* confidence;
+* expiration where appropriate.
 
 ---
 
@@ -458,8 +470,6 @@ execution state
 
 Long-running and recoverable work.
 
-Examples:
-
 ```text
 start workflow
      ↓
@@ -474,11 +484,12 @@ execute next step
 complete
 ```
 
+The runtime should be able to recover important execution state instead of
+depending on a live process remaining in memory.
+
 ## `routing/`
 
-Determines what the current request actually needs.
-
-Examples:
+Determines what the current request needs.
 
 ```text
 "What did I decide about X?"
@@ -500,7 +511,7 @@ Reasoning
 
 ## `prompt/`
 
-Responsible for constructing the working context sent to the LLM.
+Responsible for constructing the working context sent to the reasoning layer.
 
 The runtime should assemble context from relevant sources rather than
 blindly injecting everything it knows.
@@ -522,6 +533,9 @@ CURRENT REQUEST
         │
         ▼
   WORKING CONTEXT
+        │
+        ▼
+  AI GATEWAY
         │
         ▼
        LLM
@@ -554,14 +568,14 @@ DECISIONS.md
 
 ## `PROJECT.md`
 
-What the project is, why it exists and what its boundaries are.
+What the project is, why it exists, and what its boundaries are.
 
 ## `CURRENT_STATE.md`
 
 What is happening right now.
 
-This should be the fastest way for the runtime to understand current project
-status.
+This should be the fastest way for the runtime to understand the current
+project status.
 
 ## `ARCHITECTURE.md`
 
@@ -577,7 +591,7 @@ Important architectural and operational decisions.
 
 This distinction is fundamental.
 
-Actual source code remains in the real repository:
+Actual source code remains in the real repositories:
 
 ```text
 edge-workers/
@@ -632,9 +646,9 @@ tools/
 └── web/
 ```
 
-Tools represent capabilities.
+Tools represent explicit capabilities.
 
-A tool is something the runtime can explicitly invoke.
+A tool is something the runtime can deliberately invoke.
 
 Examples:
 
@@ -646,7 +660,7 @@ GitHub
 
 Cloudflare
   ├── inspect resources
-  ├── inspect deployment
+  ├── inspect deployments
   └── manage resources
 
 Terminal
@@ -670,7 +684,7 @@ Tools should eventually be:
 * validated;
 * auditable.
 
-The LLM should never receive unrestricted infrastructure access.
+The reasoning model should never receive unrestricted infrastructure access.
 
 ---
 
@@ -694,18 +708,102 @@ For example:
 Runtime
    │
    ▼
-LLM abstraction
+Internal LLM Interface
    │
-   ├── Provider A
-   ├── Provider B
-   └── Provider C
+   ▼
+AI Gateway
+   │
+   ├── Workers AI
+   ├── Claude
+   ├── GPT
+   └── Other Providers
 ```
 
-The same principle applies to GitHub and Cloudflare.
+The same principle applies to GitHub and Cloudflare integrations.
 
 ---
 
-# 13. `config/`
+# 13. AI Gateway
+
+AI Gateway is the model-control and observability layer between the runtime
+and external reasoning providers.
+
+It is **not** the memory layer.
+
+It is **not** the agent runtime.
+
+It is **not** the reasoning model itself.
+
+Its responsibility is to provide a controlled interface between
+`krailo-brain` and the model ecosystem.
+
+```text
+                    KRAILO-BRAIN
+                         │
+                  Context Assembler
+                         │
+                         ▼
+                ┌─────────────────┐
+                │   AI GATEWAY    │
+                │                 │
+                │ Routing         │
+                │ Observability   │
+                │ Provider Control│
+                │ Fallback        │
+                │ Policy          │
+                └───────┬─────────┘
+                        │
+             ┌──────────┼──────────┐
+             ▼          ▼          ▼
+        Workers AI    Claude       GPT
+             │          │          │
+             └──────────┼──────────┘
+                        │
+                        ▼
+                   LLM RESPONSE
+```
+
+The gateway should allow the runtime to remain independent from a specific
+model provider.
+
+Potential responsibilities include:
+
+* model/provider routing;
+* retries;
+* fallback;
+* request observability;
+* response observability;
+* token usage tracking;
+* cost tracking;
+* latency tracking;
+* provider health;
+* optional caching;
+* centralized model configuration.
+
+The architectural separation is:
+
+```text
+Runtime      → controls the agent
+
+Memory       → preserves knowledge
+
+Projects     → preserve project context
+
+AI Gateway   → controls the model layer
+
+LLM          → provides reasoning
+
+Tools        → provide capabilities
+```
+
+This allows me to change models without redesigning the runtime.
+
+It also gives the system a centralized place to understand how the reasoning
+layer behaves in production.
+
+---
+
+# 14. `config/`
 
 ```text
 config/
@@ -721,13 +819,14 @@ It may eventually define:
 * feature flags;
 * agent configuration;
 * tool configuration;
-* schema definitions.
+* schema definitions;
+* provider configuration.
 
 Secrets do not belong in Git.
 
 ---
 
-# 14. `src/`
+# 15. `src/`
 
 ```text
 src/
@@ -741,7 +840,7 @@ src/
 
 This is where the actual implementation will live.
 
-The architectural principle is:
+The architectural relationship is:
 
 ```text
 docs/
@@ -755,7 +854,7 @@ implements architecture
 
 ---
 
-# 15. `tests/`
+# 16. `tests/`
 
 ```text
 tests/
@@ -767,7 +866,7 @@ tests/
 
 Testing is divided according to architecture.
 
-Eventually I want to test things such as:
+Eventually I want to test:
 
 ```text
 Memory retrieval
@@ -782,58 +881,117 @@ Tool authorization
 
 Execution recovery
 
+AI provider routing
+
+AI Gateway behavior
+
 End-to-end agent workflows
 ```
 
 ---
 
-# 16. Cloudflare Runtime Model
+# 17. Cloudflare Runtime Model
 
 The planned runtime is based around the Cloudflare ecosystem.
 
 Conceptually:
 
 ```text
-┌──────────────────────────────────────┐
-│        Cloudflare Agent Runtime      │
-├──────────────────────────────────────┤
-│ Agent / Durable Object               │
-│                                      │
-│ Persistent State                     │
-│ Sessions                             │
-│ Scheduling                            │
-│ Durable Execution                    │
-│ Tool Calls                           │
-│ Memory Retrieval                     │
-└──────────────────────┬───────────────┘
+┌──────────────────────────────────────────┐
+│          CLOUDFLARE AGENT RUNTIME        │
+├──────────────────────────────────────────┤
+│ Agent / Durable Object                   │
+│                                          │
+│ Persistent State                         │
+│ Sessions                                 │
+│ Scheduling                               │
+│ Durable Execution                        │
+│ Tool Calls                               │
+│ Memory Retrieval                         │
+└──────────────────────┬───────────────────┘
+                       │
+                       ▼
+                Context Assembler
+                       │
+                       ▼
+                  AI Gateway
                        │
                        ▼
                  Reasoning LLM
 ```
 
-Cloudflare Agents already provide primitives for persistent agent state,
-sessions, scheduling, execution and durable lifecycle management. The exact
-Cloudflare service used underneath a specific subsystem may evolve without
-changing the architecture of `krailo-brain`.
+Cloudflare-specific services are implementation choices behind these
+capabilities.
 
-The architecture therefore depends on **capabilities**, not on one specific
+The architecture should depend on capabilities, not on one specific
 Cloudflare product.
 
 ---
 
-# 17. Memory Is Not Context
+# 18. AI Model Strategy
+
+I want the reasoning layer to remain replaceable.
+
+The target architecture is:
+
+```text
+                 AGENT RUNTIME
+                       │
+                       ▼
+                CONTEXT ASSEMBLER
+                       │
+                       ▼
+                  AI GATEWAY
+                       │
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+      Workers AI     Claude        GPT
+          │            │            │
+          └────────────┼────────────┘
+                       │
+                       ▼
+                    RESPONSE
+```
+
+Different workloads may use different models.
+
+For example:
+
+```text
+Simple classification
+        ↓
+Lower-cost model
+
+Memory extraction
+        ↓
+Efficient model
+
+Complex reasoning
+        ↓
+High-capability model
+```
+
+The decision about which model to use belongs to the runtime and model-control
+layer, not to the permanent personality or memory system.
+
+---
+
+# 19. Memory Is Not Context
 
 This is one of the most important rules in the project.
 
 ```text
                  MEMORY
                    │
-            Relevant recall
+              Relevant recall
                    │
                    ▼
           ┌─────────────────┐
           │  CONTEXT WINDOW │
           └─────────────────┘
+                   │
+                   ▼
+             AI GATEWAY
                    │
                    ▼
                   LLM
@@ -846,12 +1004,15 @@ Memory is persistent.
 The runtime decides which memory is relevant enough to enter the current
 working context.
 
+The AI Gateway then controls how that working context reaches the chosen
+reasoning provider.
+
 This prevents the system from becoming dependent on increasingly large
 historical conversations.
 
 ---
 
-# 18. The Lifecycle of a Request
+# 20. Lifecycle of a Request
 
 A complete request should eventually look like this:
 
@@ -868,17 +1029,22 @@ A complete request should eventually look like this:
                  │    ROUTE    │
                  └──────┬──────┘
                         │
-          ┌─────────────┼─────────────┐
-          ▼             ▼             ▼
-       Project        Memory         Tool
-       Context        Recall         Need
-          │             │             │
-          └─────────────┼─────────────┘
+           ┌────────────┼────────────┐
+           ▼            ▼            ▼
+        Project        Memory       Tool
+        Context        Recall       Need
+           │            │            │
+           └────────────┼────────────┘
                         │
                         ▼
                  ┌─────────────┐
                  │  ASSEMBLE   │
                  │   CONTEXT   │
+                 └──────┬──────┘
+                        │
+                        ▼
+                 ┌─────────────┐
+                 │ AI GATEWAY  │
                  └──────┬──────┘
                         │
                         ▼
@@ -901,7 +1067,7 @@ A complete request should eventually look like this:
       Memory Update          Project Update
 ```
 
-The result of a conversation can therefore become durable state.
+A completed conversation can therefore produce durable changes.
 
 For example:
 
@@ -927,7 +1093,7 @@ Conversation
 
 ---
 
-# 19. Source of Truth
+# 21. Source of Truth
 
 Different information has different authoritative sources.
 
@@ -949,6 +1115,9 @@ CURRENT SYSTEM STATE
 
 CURRENT SESSION
     → runtime/session state
+
+MODEL PROVIDER CONFIGURATION
+    → runtime / integrations / AI Gateway configuration
 ```
 
 I do not want one enormous "everything database".
@@ -960,7 +1129,7 @@ of silently inventing an answer.
 
 ---
 
-# 20. What `krailo-brain` Is Not
+# 22. What `krailo-brain` Is Not
 
 I am deliberately not building:
 
@@ -979,49 +1148,56 @@ I am also not building:
 * unrestricted model access to infrastructure;
 * a copy of every Git repository inside the agent;
 * an opaque memory dump containing every conversation;
-* a system where important architectural decisions exist only inside prompts.
+* a system where important architectural decisions exist only inside prompts;
+* a model-provider implementation embedded directly into the core runtime.
 
 ---
 
-# 21. Development Strategy
+# 23. Development Strategy
 
 I want to build the system from the inside out.
 
 ```text
-                FOUNDATION
-                    │
-                    ▼
-               PERSONALITY
-                    │
-                    ▼
-                 RUNTIME
-                    │
-                    ▼
-             PERSISTENT STATE
-                    │
-                    ▼
-                 MEMORY
-                    │
-                    ▼
-                PROJECTS
-                    │
-                    ▼
-             CONTEXT ASSEMBLY
-                    │
-                    ▼
-                  TOOLS
-                    │
-                    ▼
-             INTEGRATIONS
-                    │
-                    ▼
-            DURABLE EXECUTION
-                    │
-                    ▼
-             SECURITY / AUDIT
-                    │
-                    ▼
-                PRODUCTION
+                   FOUNDATION
+                       │
+                       ▼
+                  PERSONALITY
+                       │
+                       ▼
+                    RUNTIME
+                       │
+                       ▼
+                PERSISTENT STATE
+                       │
+                       ▼
+                    MEMORY
+                       │
+                       ▼
+                   PROJECTS
+                       │
+                       ▼
+                CONTEXT ASSEMBLY
+                       │
+                       ▼
+                  AI GATEWAY
+                       │
+                       ▼
+                  REASONING LLM
+                       │
+                       ▼
+                    TOOLS
+                       │
+                       ▼
+                 INTEGRATIONS
+                       │
+                       ▼
+              DURABLE EXECUTION
+                       │
+                       ▼
+                SECURITY / AUDIT
+                       │
+                       ▼
+                   PRODUCTION
 ```
 
 I do not want to implement every possible subsystem before the core runtime
@@ -1033,14 +1209,16 @@ The first milestone is a minimal agent that can:
 2. maintain persistent state;
 3. retrieve durable memory;
 4. understand a project;
-5. call a tool;
-6. continue the same work in a later session.
+5. assemble relevant context;
+6. invoke a model through the model-control layer;
+7. call an explicit tool;
+8. continue the same work in a later session.
 
 Everything else should grow around that foundation.
 
 ---
 
-# 22. Current Status
+# 24. Current Status
 
 ```text
 [✓] Repository created
@@ -1051,6 +1229,7 @@ Everything else should grow around that foundation.
 [✓] Project model
 [✓] Tool model
 [✓] Integration model
+[✓] AI Gateway architecture
 [✓] Documentation structure
 
 [ ] Agent runtime
@@ -1059,6 +1238,8 @@ Everything else should grow around that foundation.
 [ ] Retrieval
 [ ] Project loading
 [ ] Context assembly
+[ ] AI Gateway integration
+[ ] Model routing
 [ ] Tool execution
 [ ] Durable execution
 [ ] Security
@@ -1068,16 +1249,16 @@ Everything else should grow around that foundation.
 
 ---
 
-# 23. Final Architectural Model
+# 25. Final Architectural Model
 
-The final system should be understandable through one diagram:
+The complete architecture should be understandable through one diagram:
 
 ```text
-                             ┌──────────────┐
-                             │     USER     │
-                             └──────┬───────┘
-                                    │
-                                    ▼
+                              ┌──────────────┐
+                              │     USER     │
+                              └──────┬───────┘
+                                     │
+                                     ▼
                     ╔══════════════════════════╗
                     ║       KRAILO-BRAIN       ║
                     ║      AGENT RUNTIME       ║
@@ -1105,38 +1286,63 @@ The final system should be understandable through one diagram:
                                  │
                                  ▼
                       ┌─────────────────────┐
-                      │    REASONING LLM   │
+                      │     AI GATEWAY      │
+                      │                     │
+                      │ Routing             │
+                      │ Fallback            │
+                      │ Observability       │
+                      │ Cost / Tokens       │
+                      │ Provider Control    │
                       └──────────┬──────────┘
                                  │
-               ┌─────────────────┼─────────────────┐
-               │                 │                 │
-               ▼                 ▼                 ▼
-         ┌──────────┐      ┌───────────┐     ┌───────────┐
-         │  GitHub  │      │ Cloudflare│     │ Terminal  │
-         └────┬─────┘      └─────┬─────┘     └─────┬─────┘
-              │                  │                 │
-              └──────────────────┼─────────────────┘
+                    ┌────────────┼────────────┐
+                    │            │            │
+                    ▼            ▼            ▼
+               Workers AI      Claude         GPT
+                    │            │            │
+                    └────────────┼────────────┘
                                  │
                                  ▼
-                        REAL ENVIRONMENT
+                           REASONING
+                                 │
+                                 ▼
+                              TOOLS
+                                 │
+                    ┌────────────┼────────────┐
+                    ▼            ▼            ▼
+                 GitHub      Cloudflare    Terminal
+                    │            │            │
+                    └────────────┼────────────┘
+                                 │
+                                 ▼
+                         REAL ENVIRONMENT
 ```
 
 The architectural division is intentionally simple:
 
 ```text
-Personality → Who the agent is
-Memory      → What the agent remembers
-Projects    → What the agent understands about ongoing work
-Runtime     → What the agent is doing
-Tools       → What the agent can do
-Integrations→ What external systems it can connect to
-LLM         → How the agent reasons
+Personality  → Who the agent is
+
+Memory       → What the agent remembers
+
+Projects     → What the agent understands about ongoing work
+
+Runtime      → What the agent is doing
+
+AI Gateway   → How model providers are controlled
+
+LLM          → How the agent reasons
+
+Tools        → What the agent can do
+
+Integrations → What external systems it can connect to
 ```
 
 That separation is the foundation of `krailo-brain`.
 
-The goal is not to make one extremely large prompt.
+The goal is not to create one enormous prompt or one enormous database.
 
 The goal is to build a runtime where an AI system can maintain continuity,
-recover relevant knowledge, understand long-running work, use tools and
-continue operating as the system evolves.
+recover relevant knowledge, understand long-running work, select an appropriate
+reasoning model, use explicit tools, and continue operating as the system
+evolves.
