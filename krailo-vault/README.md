@@ -267,7 +267,7 @@ While `cloudflare-kv` is currently the primary reference storage engine [1], `kr
 
 ### 2. Edge-Native AI Orchestration (`cloudflare-ai` Profiles)
 
-We are extending the declarative GitOps approach to serverless AI configurations. Soon, using the new **`cloudflare-ai`** target provider, you will be able to manage AI prompts, model weights, and routing rules globally using the same workflow with a new manifest: `kind: EdgeAIProfile`.
+I'm extending the declarative GitOps approach to serverless AI configurations. Soon, using the new **`cloudflare-ai`** target provider, you will be able to manage AI prompts, model weights, and routing rules globally using the same workflow with a new manifest: `kind: EdgeAIProfile`.
 
 This allows you to version-control and deploy:
 *   **System prompts:** System instructions and operational guidelines for LLMs.
@@ -278,7 +278,7 @@ This allows you to version-control and deploy:
 
 ### 3. Kubernetes Ecosystem Integration (CRD & Operator)
 
-To bridge the gap between Cloudflare's serverless edge and traditional containerized infrastructure, we are actively developing a native Kubernetes Operator written in Rust.
+To bridge the gap between Cloudflare's serverless edge and traditional containerized infrastructure, i'm actively developing a native Kubernetes Operator written in Rust.
 
 *   **Custom Resource Definition (CRD):** The operator registers `EdgeVault` as a native object inside your cluster.
 *   **Active Reconciliation:** Instead of manually running CLI commands, the operator will run in your cluster, watch `EdgeVault` resources, dynamically communicate with your Cloudflare Worker API (`api.vault.krailo.sh`), and automatically generate, update, or sync native Kubernetes `Secret` objects in real-time.
