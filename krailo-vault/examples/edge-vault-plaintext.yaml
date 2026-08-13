@@ -1,0 +1,20 @@
+apiVersion: krailo.sh/v1alpha1
+kind: EdgeVault
+metadata:
+  name: portfolio-backend-dev
+  namespace: development
+  annotations:
+    krailo.sh/encrypted: "false" # Вказує, що файл не зашифрований
+    description: "Development environment secrets for portfolio backend"
+spec:
+  target:
+    provider: cloudflare-kv
+    endpoint: "http://127.0.0.1:8787" # Локальний воркер
+  variables:
+    PORT: "8080"
+    LOG_LEVEL: "debug"
+    DB_HOST: "localhost"
+    DB_USER: "postgres"
+  secrets:
+    DB_PASSWORD: "my-super-secret-password-123"
+    JWT_SECRET_KEY: "super-secure-dev-jwt-token-key-change-in-prod"

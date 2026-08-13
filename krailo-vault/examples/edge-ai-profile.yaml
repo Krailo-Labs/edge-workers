@@ -1,0 +1,16 @@
+apiVersion: krailo.sh/v1alpha1
+kind: EdgeAIProfile
+metadata:
+  name: customer-support-agent
+  namespace: production
+  annotations:
+    description: "EdgeAI configuration for automated client support"
+spec:
+  target:
+    provider: cloudflare-ai
+    endpoint: "https://api.vault.krailo.sh"
+  model: "@cf/meta/llama-3-8b-instruct"
+  parameters:
+    temperature: "0.7"
+    max_tokens: "256"
+  systemPrompt: "You are an automated support assistant representing Krailo Labs. Be polite and concise."

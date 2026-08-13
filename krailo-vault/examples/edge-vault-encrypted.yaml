@@ -1,0 +1,20 @@
+apiVersion: krailo.sh/v1alpha1
+kind: EdgeVault
+metadata:
+  name: portfolio-backend-prod
+  namespace: production
+  annotations:
+    krailo.sh/encrypted: "true" # Вказує, що secrets блок зашифрований
+    description: "Production environment secrets for portfolio backend"
+spec:
+  target:
+    provider: cloudflare-kv
+    endpoint: "https://api.vault.krailo.sh" # Продакшн домен
+  variables:
+    PORT: "80"
+    LOG_LEVEL: "info"
+    DB_HOST: "postgres.krailo.sh"
+    DB_USER: "vault_user"
+  secrets:
+    DB_PASSWORD: "U2FsdGVkX19P8MhY7m9vM2FzZTY0Y2lwaGVydGV4dGRlbW8=" # Зашифровано AES-256-GCM
+    JWT_SECRET_KEY: "TmV3U2VjcmV0S2V5Rm9yUHJvZFZhdWx0Q3J5cHRvRGVtbw==" # Зашифровано AES-256-GCM
