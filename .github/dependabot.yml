@@ -1,11 +1,11 @@
 version: 2
 updates:
-  # - package-ecosystem: "npm"
-  #   directory: "/"
-  #   schedule:
-  #     interval: "weekly"
+  - package-ecosystem: "cargo"
+    directory: "krailo-vault/worker"
+    schedule:
+      interval: "weekly"
 
   - package-ecosystem: "cargo"
-    directory: "/"
+    directory: "krailo-vault/cli"
     schedule:
       interval: "weekly"
