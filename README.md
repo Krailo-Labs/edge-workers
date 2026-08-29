@@ -13,6 +13,7 @@ documentation, and tests.
 | [`petition-tracker`](./petition-tracker) | TypeScript / JS | Automated state-driven petition signature tracking with Telegram notifications. | Cron (`*/15 * * * *`) |
 | [`krailo-vault`](./krailo-vault) | Rust / WASM | Edge-native, zero-cold-start Secret & Configuration Manager with client-side GitOps encryption. | HTTP (REST API) |
 | [`krailo-brain`](./krailo-brain) | Cloudflare Agents / AI Runtime | Persistent AI Runtime / Agent Operating Environment with durable identity, long-term memory, project continuity, tools, and recoverable execution. | HTTP / Sessions |
+| [`info-hub`](./info-hub) | TypeScript / React / Cloudflare Workers / AI | Personal Knowledge OS for collecting, structuring, connecting, and developing information through typed content units, topics, states, maturity, relations, and contextual AI. | HTTP / Interactive UI |
 
 ## Architecture Overview
 
@@ -28,4 +29,5 @@ documentation, and tests.
 edge-workers/
 ├── petition-tracker/
 ├── krailo-vault/
-└── krailo-brain/
+├── krailo-brain/
+└── info-hub/
