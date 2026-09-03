@@ -1,0 +1,8 @@
+{
+  "name": "InfoHub",
+  "description": "Інфо-хаб, де інформація є базовою одиницею, а типи, теми, стани, зрілість, призначення та зв'язки формують її структуру.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

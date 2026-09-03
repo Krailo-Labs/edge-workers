@@ -1,0 +1,20 @@
+--- src/features/editor/NotionEditor.tsx
++++ src/features/editor/NotionEditor.tsx
+@@ -128,11 +128,11 @@
+         node.textContent = '';
+       } else if (text === '#' && e.key === ' ') {
+         e.preventDefault();
+-        execCmd('formatBlock', 'H1');
++        execCmd('formatBlock', '<H1>');
+         node.textContent = '';
+       } else if (text === '##' && e.key === ' ') {
+         e.preventDefault();
+-        execCmd('formatBlock', 'H2');
++        execCmd('formatBlock', '<H2>');
+         node.textContent = '';
+       } else if (text === '>' && e.key === ' ') {
+         e.preventDefault();
+-        execCmd('formatBlock', 'BLOCKQUOTE');
++        execCmd('formatBlock', '<BLOCKQUOTE>');
+         node.textContent = '';
+       }
