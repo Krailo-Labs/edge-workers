@@ -1,0 +1,31 @@
+--- src/features/editor/NotionEditor.tsx
++++ src/features/editor/NotionEditor.tsx
+@@ -111,6 +111,27 @@
+ 
+   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+     // Implement Markdown shortcuts
++    if (e.key === 'Enter') {
++      const selection = window.getSelection();
++      if (selection && selection.anchorNode) {
++        let node: Node | null = selection.anchorNode;
++        while (node && node.nodeName !== 'DIV' && node.nodeName !== 'H1' && node.nodeName !== 'H2' && node.nodeName !== 'H3') {
++           node = node.parentNode;
++        }
++        if (node && (node.nodeName === 'H1' || node.nodeName === 'H2' || node.nodeName === 'H3')) {
++           // User pressed Enter inside a heading.
++           // The safest cross-browser way to break out of a heading is to use formatBlock back to P on a slight delay
++           // OR let it duplicate and formatBlock to P.
++           setTimeout(() => {
++              const currSelection = window.getSelection();
++              if (currSelection && currSelection.anchorNode) {
++                  // If it's a new empty block (created by enter), switch it to paragraph
++                  execCmd('formatBlock', '<P>');
++              }
++           }, 10);
++        }
++      }
++    }
++
+     if (e.key === ' ' || e.key === 'Enter') {
+       const selection = window.getSelection();
+       if (!selection || !selection.anchorNode) return;
