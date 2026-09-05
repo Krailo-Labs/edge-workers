@@ -16,6 +16,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { TYPE_TRANSLATIONS, STATE_TRANSLATIONS, VISIBILITY_TRANSLATIONS, PURPOSE_TRANSLATIONS } from '@/shared/utils/translations';
 
+export const runtime = 'edge'
+
 export default function ContentViewer() {
   const params = useParams();
   const router = useRouter();
