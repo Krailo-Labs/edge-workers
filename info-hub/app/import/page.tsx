@@ -933,6 +933,23 @@ export default function ImportPage() {
                 <p className="text-emerald-100/80 text-xs sm:text-sm max-w-2xl leading-relaxed">
                   {parsedData.description}
                 </p>
+                <div className="flex items-center gap-2 pt-2">
+                  <span className="text-xs text-emerald-200">Зберегти як:</span>
+                  <select 
+                    className="bg-emerald-950 border border-emerald-700 text-emerald-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-emerald-400"
+                    value={parsedData.type}
+                    onChange={(e) => setParsedData({...parsedData, type: e.target.value as any})}
+                  >
+                    <option value="NOTE">📝 Нотатка</option>
+                    <option value="ARTICLE">📄 Стаття</option>
+                    <option value="LESSON">📖 Урок</option>
+                    <option value="MATERIAL">📚 Матеріал</option>
+                    <option value="COURSE">🎓 Курс</option>
+                  </select>
+                  <span className="text-[10px] text-emerald-400/70 ml-2 italic">
+                    (Авто-рекомендація: {parsedData.type === 'COURSE' ? 'Курс, оскільки файлів багато' : 'Нотатка'})
+                  </span>
+                </div>
               </div>
 
               <Button 

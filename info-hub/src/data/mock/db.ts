@@ -112,7 +112,7 @@ export const useMockDb = create<DatabaseState>((set, get) => ({
   feedback: demoFeedback,
   isCloudflareConnected: false,
   
-  initializeFromStorage: () => {
+  initializeFromStorage: async () => {
     if (typeof window === 'undefined') return;
     const rawContent = loadFromStorage<ContentUnit[]>(STORAGE_KEY_CONTENT, demoContent);
     const cleanContent = deduplicateContentUnits(rawContent);
@@ -122,6 +122,26 @@ export const useMockDb = create<DatabaseState>((set, get) => ({
       comments: loadFromStorage<Comment[]>(STORAGE_KEY_COMMENTS, demoComments),
       feedback: loadFromStorage<Feedback[]>(STORAGE_KEY_FEEDBACK, demoFeedback),
     });
+
+    // Try fetching from Cloudflare D1 asynchronously
+    try {
+      const res = await fetch('/api/content');
+      if (res.ok) {
+        const d1Data = await res.json();
+        if (Array.isArray(d1Data) && d1Data.length > 0) {
+          // Merge D1 data (it takes precedence) with local data
+          set((state) => {
+            const incomingIds = new Set(d1Data.map(d => d.id));
+            const filteredLocal = state.content.filter(c => !incomingIds.has(c.id));
+            const merged = deduplicateContentUnits([...d1Data, ...filteredLocal]);
+            saveToStorage(STORAGE_KEY_CONTENT, merged);
+            return { content: merged, isCloudflareConnected: true };
+          });
+        }
+      }
+    } catch (e) {
+      console.log('Running in local mode, CF D1 fetch failed:', e);
+    }
   },
   
   addContent: (unit) => {
@@ -130,6 +150,14 @@ export const useMockDb = create<DatabaseState>((set, get) => ({
       const filtered = state.content.filter(c => c.id !== cleanUnit.id);
       const next = deduplicateContentUnits([cleanUnit, ...filtered]);
       saveToStorage(STORAGE_KEY_CONTENT, next);
+      
+      // Async sync to CF D1
+      fetch('/api/content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanUnit)
+      }).catch(e => console.error('Failed to sync with D1:', e));
+
       return { content: next };
     });
   },
@@ -137,10 +165,25 @@ export const useMockDb = create<DatabaseState>((set, get) => ({
   updateContent: (id, data) => {
     const cleanData = sanitizeData(data);
     set((state) => {
-      const next = state.content.map(c => 
-        c.id === id ? { ...c, ...cleanData, updatedAt: new Date().toISOString() } : c
-      );
+      let updatedUnit = null;
+      const next = state.content.map(c => {
+        if (c.id === id) {
+          updatedUnit = { ...c, ...cleanData, updatedAt: new Date().toISOString() };
+          return updatedUnit;
+        }
+        return c;
+      });
       saveToStorage(STORAGE_KEY_CONTENT, next);
+
+      // Async sync to CF D1
+      if (updatedUnit) {
+        fetch('/api/content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedUnit)
+        }).catch(e => console.error('Failed to sync update with D1:', e));
+      }
+
       return { content: next };
     });
   },

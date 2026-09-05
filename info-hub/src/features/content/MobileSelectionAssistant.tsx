@@ -100,20 +100,15 @@ export function MobileSelectionAssistant({ contentTitle, contentType, onOpenAiTa
     setCopied(false);
 
     try {
-      const response = await fetch('/api/gemini/generate', {
+      const response = await fetch('/api/ai/context', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: `Ти — персональний навчальний AI-асистент у застосунку InfoHub.
-Контекст матеріалу: "${contentTitle}" (Тип: ${contentType}).
-Виділений фрагмент: "${selectedText}".
-
-Виконай запит: ${
-  action === 'explain' ? 'Поясни цей термін/концепцію простими словами для учня, вкажи суть у 2-3 реченнях та чому це важливо.' :
-  action === 'example' ? 'Наведи живий практичний приклад з реального життя чи бізнесу/розробки, який ілюструє цей фрагмент.' :
-  'Зроби чіткий переклад українською/термінологічне визначення та дай короткий словничок ключових понять.'
-}
-Відповідь надай структуровано українською мовою з акцентом на легке сприйняття.`,
+          action,
+          selectedText,
+          contentTitle,
+          contentType,
+          contentBody: '...' // Currently we do not have full body here, but will pass title
         }),
       });
 

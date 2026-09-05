@@ -15,8 +15,6 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { TYPE_TRANSLATIONS, STATE_TRANSLATIONS, VISIBILITY_TRANSLATIONS, PURPOSE_TRANSLATIONS } from '@/shared/utils/translations';
 
-export const runtime = 'edge';
-
 export default function ContentViewer() {
   const params = useParams();
   const router = useRouter();
@@ -73,11 +71,18 @@ export default function ContentViewer() {
 
     setAiLoading(true);
     try {
-      const response = await fetch('/api/gemini/generate', {
+      // Gather text content of current material blocks for context
+      const contentBody = content?.blocks?.map(b => (b.content as any)?.text || '').filter(Boolean).join('\n') || '';
+
+      const response = await fetch('/api/ai/context', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: `Матеріал: "${content.title}" (Тип: ${content.type}).\nКористувач запитує: ${promptToSend}`,
+          action: 'chat',
+          prompt: promptToSend,
+          contentTitle: content.title,
+          contentType: content.type,
+          contentBody,
         }),
       });
 
@@ -85,10 +90,10 @@ export default function ContentViewer() {
         const data = await response.json();
         setAiCustomResponse(data.text);
       } else {
-        setAiCustomResponse(`AI Аналіз для "${content.title}":\nМатеріал містить структуровані модулі з фокусом на ключові концепції. Для кращого результату рекомендується закріпити теорію практичним тестуванням.`);
+        setAiCustomResponse(`AI Ментор для "${content.title}":\nМатеріал містить структуровані модулі з фокусом на ключові концепції. Запитання прийнято до уваги!`);
       }
     } catch {
-      setAiCustomResponse(`AI Аналіз для "${content.title}":\nМатеріал містить структуровані модулі з фокусом на ключові концепції.`);
+      setAiCustomResponse(`AI Ментор для "${content.title}":\nВибачте, зараз не вдалося отримати відповідь від AI.`);
     } finally {
       setAiLoading(false);
     }

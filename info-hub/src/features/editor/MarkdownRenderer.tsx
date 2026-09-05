@@ -40,13 +40,13 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
   const processedContent = useMemo(() => normalizeMarkdown(content), [content]);
 
   return (
-    <div className={cn("markdown-content w-full max-w-full overflow-hidden break-words [overflow-wrap:anywhere]", className)}>
+    <div className={cn("markdown-content w-full max-w-full overflow-x-hidden break-words [overflow-wrap:anywhere]", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children, ...props }) => (
             <h1 
-              className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-stone-900 tracking-tight leading-tight sm:leading-snug mt-6 sm:mt-8 mb-3.5 sm:mb-4 pb-2 border-b border-stone-200/80 break-words [overflow-wrap:anywhere]" 
+              className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-inherit tracking-tight leading-tight sm:leading-snug mt-6 sm:mt-8 mb-3.5 sm:mb-4 pb-2 border-b border-stone-200/80 break-words [overflow-wrap:anywhere] opacity-90" 
               {...props}
             >
               {children}
@@ -54,7 +54,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
           ),
           h2: ({ children, ...props }) => (
             <h2 
-              className="text-lg sm:text-xl lg:text-2xl font-bold text-stone-900 tracking-tight leading-snug mt-5 sm:mt-7 mb-3 break-words [overflow-wrap:anywhere]" 
+              className="text-lg sm:text-xl lg:text-2xl font-bold text-inherit tracking-tight leading-snug mt-5 sm:mt-7 mb-3 break-words [overflow-wrap:anywhere] opacity-90" 
               {...props}
             >
               {children}
@@ -62,53 +62,53 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
           ),
           h3: ({ children, ...props }) => (
             <h3 
-              className="text-base sm:text-lg lg:text-xl font-bold text-stone-900 tracking-tight leading-snug mt-4 sm:mt-6 mb-2.5 break-words [overflow-wrap:anywhere]" 
+              className="text-base sm:text-lg lg:text-xl font-bold text-inherit tracking-tight leading-snug mt-4 sm:mt-6 mb-2.5 break-words [overflow-wrap:anywhere] opacity-90" 
               {...props}
             >
               {children}
             </h3>
           ),
           h4: ({ children, ...props }) => (
-            <h4 className="text-sm sm:text-base font-bold text-stone-900 mt-3 mb-2" {...props}>
+            <h4 className="text-sm sm:text-base font-bold text-inherit mt-3 mb-2 opacity-90" {...props}>
               {children}
             </h4>
           ),
           p: ({ children, ...props }) => (
             <p 
-              className="text-sm sm:text-base lg:text-[17px] text-stone-800 leading-relaxed sm:leading-loose mb-3.5 sm:mb-4 font-normal break-words [overflow-wrap:anywhere]" 
+              className="text-sm sm:text-base lg:text-[17px] text-inherit opacity-90 leading-relaxed sm:leading-loose mb-3.5 sm:mb-4 font-normal break-words [overflow-wrap:anywhere]" 
               {...props}
             >
               {children}
             </p>
           ),
           ul: ({ children, ...props }) => (
-            <ul className="list-disc list-outside pl-5 sm:pl-6 mb-4 sm:mb-5 space-y-1.5 sm:space-y-2 text-stone-800 text-sm sm:text-base" {...props}>
+            <ul className="list-disc list-outside pl-5 sm:pl-6 mb-4 sm:mb-5 space-y-1.5 sm:space-y-2 text-inherit opacity-90 text-sm sm:text-base" {...props}>
               {children}
             </ul>
           ),
           ol: ({ children, ...props }) => (
-            <ol className="list-decimal list-outside pl-5 sm:pl-6 mb-4 sm:mb-5 space-y-2 sm:space-y-2.5 text-stone-800 text-sm sm:text-base font-medium" {...props}>
+            <ol className="list-decimal list-outside pl-5 sm:pl-6 mb-4 sm:mb-5 space-y-2 sm:space-y-2.5 text-inherit opacity-90 text-sm sm:text-base font-medium" {...props}>
               {children}
             </ol>
           ),
           li: ({ children, ...props }) => (
-            <li className="leading-relaxed text-stone-800 font-normal break-words [overflow-wrap:anywhere]" {...props}>
+            <li className="leading-relaxed text-inherit opacity-90 font-normal break-words [overflow-wrap:anywhere]" {...props}>
               {children}
             </li>
           ),
           strong: ({ children, ...props }) => (
-            <strong className="font-bold text-stone-950 text-[1em]" {...props}>
+            <strong className="font-bold text-inherit text-[1em]" {...props}>
               {children}
             </strong>
           ),
           em: ({ children, ...props }) => (
-            <em className="italic text-stone-700" {...props}>
+            <em className="italic text-inherit opacity-80" {...props}>
               {children}
             </em>
           ),
           blockquote: ({ children, ...props }) => (
             <blockquote 
-              className="border-l-4 border-emerald-500 bg-emerald-50/50 px-4 py-3 sm:py-3.5 rounded-r-2xl my-4 sm:my-5 text-stone-800 italic text-sm sm:text-base leading-relaxed break-words [overflow-wrap:anywhere]" 
+              className="border-l-4 border-emerald-500 bg-emerald-50/10 px-4 py-3 sm:py-3.5 rounded-r-2xl my-4 sm:my-5 text-inherit opacity-90 italic text-sm sm:text-base leading-relaxed break-words [overflow-wrap:anywhere]" 
               {...props}
             >
               {children}

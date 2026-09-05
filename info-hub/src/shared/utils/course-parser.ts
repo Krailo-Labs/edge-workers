@@ -110,7 +110,7 @@ function cleanConceptItem(line: string): string {
 }
 
 /**
- * Matches asset or fallback diagram for [TODO: IMAGE] or description
+ * Matches asset or fallback diagram for [TODO: IMAGE], [TODO: GRAPH], or description
  */
 function resolveAssetOrDiagram(
   desc: string,
@@ -119,23 +119,38 @@ function resolveAssetOrDiagram(
   const lower = desc.toLowerCase();
 
   // Check if any asset in imageMap matches keywords
-  if (imageMap) {
+  if (imageMap && Object.keys(imageMap).length > 0) {
     for (const [key, url] of Object.entries(imageMap)) {
       const k = key.toLowerCase();
       if (
-        (lower.includes('payout') || lower.includes('break-even')) && k.includes('payout') ||
-        (lower.includes('news') || lower.includes('новин')) && k.includes('news-workflow') ||
-        (lower.includes('whipsaw') || lower.includes('вертоліт')) && k.includes('news-whipsaw') ||
-        (lower.includes('knowledge') || lower.includes('карта') || lower.includes('структур')) && k.includes('knowledge-map')
+        ((lower.includes('payout') || lower.includes('break-even') || lower.includes('win rate') || lower.includes('драбинк') || lower.includes('compounding') || lower.includes('графік') || lower.includes('graph')) && (k.includes('payout') || k.includes('graph') || k.includes('balance') || k.includes('chart'))) ||
+        ((lower.includes('news') || lower.includes('новин')) && k.includes('news-workflow')) ||
+        ((lower.includes('whipsaw') || lower.includes('вертоліт')) && k.includes('news-whipsaw')) ||
+        ((lower.includes('knowledge') || lower.includes('карта') || lower.includes('структур')) && k.includes('knowledge-map')) ||
+        ((lower.includes('candle') || lower.includes('свічк') || lower.includes('ohlc')) && (k.includes('candle') || k.includes('ohlc')))
       ) {
         return { isImage: true, src: url, alt: desc };
       }
     }
-    // If only one SVG asset exists, match it
+    // If only one or two SVG/image assets exist in the archive, use the first relevant one
     const allImages = Object.values(imageMap);
     if (allImages.length === 1 && !lower.includes('ohlc')) {
       return { isImage: true, src: allImages[0], alt: desc };
     }
+  }
+
+  // Schema diagram representation for compounding / sequence risk / compounding ladder
+  if (lower.includes('драбинк') || lower.includes('compounding') || lower.includes('sequence') || lower.includes('траєкторі') || lower.includes('graph')) {
+    return {
+      isImage: false,
+      schemaTitle: 'Графік та модель симуляції: Траєкторії балансу при компаундингу',
+      schemaSteps: [
+        'Сценарій A (Ідеальний 3x Win): $5.00 → $5.85 (+$0.85) → $7.42 (+$1.57) → $10.33. Баланс зростає експоненційно.',
+        'Сценарій B (Sequence Risk — Win, Win, Loss): $5.00 → $5.85 → $7.42 → Втрата всієї поточної ставки $2.42 = Повернення до вихідного балансу.',
+        'Сценарій C (Early Loss — Loss на 1 кроці): $5.00 - $1.00 = $4.00 (-20% депозиту за 1 угоду).',
+        'Висновок моделі: Компаундинг не створює математичної переваги (Expected Value = 0 або мінус через маржу брокера), він лише агресивно збільшує Sequence Risk (ризик послідовності збитків).'
+      ]
+    };
   }
 
   // Schema diagram representation
@@ -170,11 +185,11 @@ function resolveAssetOrDiagram(
 
   return {
     isImage: false,
-    schemaTitle: desc.replace(/^\[?TODO:\s*IMAGE\]?\s*/i, '') || 'Схема аналізу та послідовності дій',
+    schemaTitle: desc.replace(/^\[?TODO:\s*(IMAGE|GRAPH|DIAGRAM)\]?\s*/i, '') || 'Схема аналізу та послідовності дій',
     schemaSteps: [
       'Контекст ринку та волатильність',
-      'Формування точки входу',
-      'Експірація та фіксація результату'
+      'Формування точки входу та оцінка ризику',
+      'Експірація, фіксація результату та аналіз статистики'
     ]
   };
 }
@@ -430,8 +445,8 @@ export function parseStructuredLessonMarkdown(
           if (pBuffer.length > 0) {
             const text = pBuffer.join('\n').trim();
             if (text) {
-              // Check for [TODO: IMAGE]
-              if (text.includes('TODO: IMAGE') || text.includes('[TODO: IMAGE]')) {
+              // Check for [TODO: IMAGE], [TODO: GRAPH], [TODO: DIAGRAM]
+              if (text.includes('TODO: IMAGE') || text.includes('[TODO: IMAGE]') || text.includes('TODO: GRAPH') || text.includes('[TODO: GRAPH]') || text.includes('TODO: DIAGRAM')) {
                 const schema = resolveAssetOrDiagram(text, imageMap);
                 if (schema.isImage && schema.src) {
                   blocks.push({
@@ -517,8 +532,8 @@ export function parseStructuredLessonMarkdown(
             continue;
           }
 
-          // [TODO: IMAGE] line directly
-          if (trimS.includes('[TODO: IMAGE]') || trimS.startsWith('TODO: IMAGE')) {
+          // [TODO: IMAGE] or [TODO: GRAPH] line directly
+          if (trimS.includes('[TODO: IMAGE]') || trimS.startsWith('TODO: IMAGE') || trimS.includes('[TODO: GRAPH]') || trimS.startsWith('TODO: GRAPH') || trimS.includes('[TODO: DIAGRAM]') || trimS.startsWith('TODO: DIAGRAM')) {
             flushP();
             const schema = resolveAssetOrDiagram(trimS, imageMap);
             if (schema.isImage && schema.src) {
