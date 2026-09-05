@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { FEEDBACK_CATEGORY_TRANSLATIONS, FEEDBACK_STATUS_TRANSLATIONS } from '@/shared/utils/translations';
 import { UserRole, VisibilityMode } from '@/shared/config/permissions';
+import { PermissionModeSelector } from '@/shared/ui/components/PermissionModeSelector';
 import { useState } from 'react';
 import { cn } from '@/shared/utils';
 
@@ -188,28 +189,17 @@ export default function AdminPage() {
                         <div className="text-[11px] text-stone-400 font-mono">{route.path}</div>
                      </div>
                   </div>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {ROLES.map(r => {
                       const currentMode = permissionsConfig.roles[r.role]?.navAccess[route.path] || 'VISIBLE';
                       return (
                         <div key={r.role} className="flex flex-col gap-1.5">
                           <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider">{r.label}</span>
-                          <select 
+                          <PermissionModeSelector
                             value={currentMode}
-                            onChange={(e) => handleModeChange(r.role, route.path, e.target.value as VisibilityMode)}
+                            onChange={(newMode) => handleModeChange(r.role, route.path, newMode)}
                             disabled={r.role === 'ADMIN'}
-                            className={cn(
-                              "w-full text-xs font-medium rounded-xl px-2 py-2 border appearance-none text-center outline-none focus:ring-2 focus:ring-emerald-200 transition-colors",
-                              r.role === 'ADMIN' ? "opacity-75 cursor-not-allowed" : "cursor-pointer",
-                              currentMode === 'VISIBLE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' :
-                              currentMode === 'BLURRED' ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' :
-                              'bg-stone-100 text-stone-500 border-stone-200 hover:bg-stone-200'
-                            )}
-                          >
-                            <option value="VISIBLE">👀 Доступно</option>
-                            <option value="BLURRED">🔒 Замок</option>
-                            <option value="HIDDEN">❌ Сховано</option>
-                          </select>
+                          />
                         </div>
                       );
                     })}

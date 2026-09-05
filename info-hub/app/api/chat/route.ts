@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     const latestMessage = messages[messages.length - 1].text;
 
     const chat = ai.chats.create({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash',
       history: history,
       config: {
         systemInstruction: systemInstruction,

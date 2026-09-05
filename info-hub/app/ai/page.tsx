@@ -5,6 +5,7 @@ import { useAuth } from '@/data/mock/auth';
 import { Button } from '@/shared/ui/components';
 import { Sparkles, Send, User, Bot, Loader2, MessageSquare, Plus, Settings, X, Square } from 'lucide-react';
 import { cn } from '@/shared/utils';
+import { AIModelSelector } from '@/shared/ui/components/AIModelSelector';
 import { AI_CONFIG } from '@/shared/config/ai';
 
 type Message = {
@@ -187,16 +188,10 @@ export default function AIPage() {
           </div>
           
           <div className="flex items-center gap-2">
-            <Settings className="w-4 h-4 text-stone-400 hidden sm:block" />
-            <select 
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="text-xs bg-stone-50 border border-stone-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-200 max-w-[120px] sm:max-w-none"
-            >
-              {AI_CONFIG.models.map(m => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
+            <AIModelSelector
+              selectedModel={selectedModel}
+              onSelectModel={(modelId) => setSelectedModel(modelId)}
+            />
           </div>
         </div>
 

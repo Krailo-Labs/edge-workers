@@ -28,6 +28,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
   const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
+  const [lockedNotice, setLockedNotice] = useState<string | null>(null);
 
   const { currentUser, setUserByRole, checkNavAccess } = useAuth();
 
@@ -38,10 +39,10 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
 
   if (!mounted) return <div className="w-64 border-r border-stone-200 bg-[#FAFAFA] hidden md:flex flex-col shrink-0 h-screen" />;
 
-  const handleNavClick = (e: React.MouseEvent, mode: string) => {
+  const handleNavClick = (e: React.MouseEvent, mode: string, title?: string) => {
     if (mode === 'BLURRED') {
       e.preventDefault();
-      alert('Цей розділ заблоковано для поточної ролі. Доступ можна налаштувати в панелі Admin.');
+      setLockedNotice(title || 'Цей розділ');
       return;
     }
     if (onClose) onClose();
@@ -50,13 +51,17 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
   return (
     <>
       {/* Mobile Overlay */}
-      {isOpen && (
-        <div className="fixed inset-0 bg-stone-900/50 z-40 md:hidden" onClick={onClose} />
-      )}
+      <div 
+        className={cn(
+          "fixed inset-0 bg-stone-900/40 backdrop-blur-xs z-40 md:hidden transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        )} 
+        onClick={onClose} 
+      />
 
       {/* Sidebar container */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 border-r border-stone-200 bg-[#FAFAFA] flex flex-col h-screen transform transition-transform duration-200 ease-in-out md:sticky md:top-0 md:translate-x-0",
+        "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] border-r border-stone-200 bg-[#FAFAFA] flex flex-col h-screen transform transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:sticky md:top-0 md:translate-x-0 shadow-2xl md:shadow-none will-change-transform",
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         {/* Brand Header */}
@@ -117,7 +122,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={(e) => handleNavClick(e, accessMode)}
+                onClick={(e) => handleNavClick(e, accessMode, item.title)}
                 className={cn(
                   "flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors group",
                   isActive ? "bg-stone-200/60 text-stone-900 font-semibold" : "text-stone-600 hover:bg-stone-100 hover:text-stone-900",
@@ -140,7 +145,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
           {checkNavAccess('/ai') !== 'HIDDEN' && (
             <Link 
               href="/ai" 
-              onClick={(e) => handleNavClick(e, checkNavAccess('/ai'))}
+              onClick={(e) => handleNavClick(e, checkNavAccess('/ai'), 'AI Помічник')}
               className={cn(
                 "flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-100 transition-colors group",
                 checkNavAccess('/ai') === 'BLURRED' && "opacity-60 cursor-not-allowed"
@@ -157,7 +162,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
           {checkNavAccess('/import') !== 'HIDDEN' && (
             <Link 
               href="/import" 
-              onClick={(e) => handleNavClick(e, checkNavAccess('/import'))}
+              onClick={(e) => handleNavClick(e, checkNavAccess('/import'), 'Імпорт пакетів')}
               className={cn(
                 "flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-100 transition-colors group",
                 checkNavAccess('/import') === 'BLURRED' && "opacity-60 cursor-not-allowed"
@@ -182,7 +187,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
           {checkNavAccess('/admin') !== 'HIDDEN' && (
             <Link 
               href="/admin" 
-              onClick={(e) => handleNavClick(e, checkNavAccess('/admin'))}
+              onClick={(e) => handleNavClick(e, checkNavAccess('/admin'), 'Admin & Права')}
               className={cn(
                 "flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-100 transition-colors",
                 checkNavAccess('/admin') === 'BLURRED' && "opacity-60 cursor-not-allowed"
@@ -246,6 +251,37 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
           </div>
         </div>
       </aside>
+
+      {/* Modern Locked Notice Modal */}
+      {lockedNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-stone-200 shadow-2xl p-6 max-w-sm w-full space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto shadow-2xs">
+              <Lock className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1.5">
+              <h3 className="font-bold text-stone-900 text-base">Розділ заблоковано</h3>
+              <p className="text-xs text-stone-500 leading-relaxed">
+                Розділ <strong>&laquo;{lockedNotice}&raquo;</strong> заблоковано для ролі <strong>{currentUser.name}</strong> ({currentUser.role}). Ви можете змінити роль або налаштувати права в панелі Admin.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button 
+                variant="secondary" 
+                className="flex-1 rounded-xl text-xs" 
+                onClick={() => setLockedNotice(null)}
+              >
+                Зрозуміло
+              </Button>
+              <Link href="/admin" onClick={() => { setLockedNotice(null); if (onClose) onClose(); }} className="flex-1">
+                <Button className="w-full bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs">
+                  Панель Admin
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

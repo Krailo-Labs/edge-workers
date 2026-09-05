@@ -7,14 +7,53 @@ const STORAGE_KEY_TOPICS = 'infohub_data_topics';
 const STORAGE_KEY_COMMENTS = 'infohub_data_comments';
 const STORAGE_KEY_FEEDBACK = 'infohub_data_feedback';
 
-// Helper to deeply sanitize data and strip any cyclic references / unwanted properties
+// Helper to deeply sanitize data and strip any cyclic references / unwanted DOM nodes / properties safely
+export function safeStringify(obj: unknown, indent?: number): string {
+  const seen = new WeakSet();
+  return JSON.stringify(
+    obj,
+    (key, value) => {
+      if (typeof value === 'object' && value !== null) {
+        if (typeof window !== 'undefined' && (value instanceof Node || value instanceof Window)) {
+          return undefined;
+        }
+        if (seen.has(value)) {
+          return undefined;
+        }
+        seen.add(value);
+      }
+      return value;
+    },
+    indent
+  );
+}
+
 export function sanitizeData<T>(obj: T): T {
   try {
-    return JSON.parse(JSON.stringify(obj));
+    const stringified = safeStringify(obj);
+    return JSON.parse(stringified);
   } catch (err) {
-    console.error('Data sanitization fallback applied:', err);
+    console.warn('Data sanitization fallback applied:', err);
     return obj;
   }
+}
+
+export function deduplicateContentUnits(items: ContentUnit[]): ContentUnit[] {
+  const seen = new Set<string>();
+  const result: ContentUnit[] = [];
+  for (const item of items) {
+    if (!item || !item.id) continue;
+    if (!seen.has(item.id)) {
+      seen.add(item.id);
+      result.push(item);
+    } else {
+      // Assign a guaranteed unique ID to duplicate elements
+      const uniqueId = `${item.id}-${Math.random().toString(36).substring(2, 7)}`;
+      seen.add(uniqueId);
+      result.push({ ...item, id: uniqueId });
+    }
+  }
+  return result;
 }
 
 const loadFromStorage = <T>(key: string, fallback: T): T => {
@@ -34,7 +73,7 @@ const saveToStorage = (key: string, data: any) => {
   if (typeof window === 'undefined') return;
   try {
     const clean = sanitizeData(data);
-    localStorage.setItem(key, JSON.stringify(clean));
+    localStorage.setItem(key, safeStringify(clean));
   } catch (e) {
     console.error(`Failed to save ${key} to storage:`, e);
   }
@@ -75,8 +114,10 @@ export const useMockDb = create<DatabaseState>((set, get) => ({
   
   initializeFromStorage: () => {
     if (typeof window === 'undefined') return;
+    const rawContent = loadFromStorage<ContentUnit[]>(STORAGE_KEY_CONTENT, demoContent);
+    const cleanContent = deduplicateContentUnits(rawContent);
     set({
-      content: loadFromStorage<ContentUnit[]>(STORAGE_KEY_CONTENT, demoContent),
+      content: cleanContent,
       topics: loadFromStorage<Topic[]>(STORAGE_KEY_TOPICS, demoTopics),
       comments: loadFromStorage<Comment[]>(STORAGE_KEY_COMMENTS, demoComments),
       feedback: loadFromStorage<Feedback[]>(STORAGE_KEY_FEEDBACK, demoFeedback),
@@ -86,7 +127,8 @@ export const useMockDb = create<DatabaseState>((set, get) => ({
   addContent: (unit) => {
     const cleanUnit = sanitizeData(unit);
     set((state) => {
-      const next = [cleanUnit, ...state.content];
+      const filtered = state.content.filter(c => c.id !== cleanUnit.id);
+      const next = deduplicateContentUnits([cleanUnit, ...filtered]);
       saveToStorage(STORAGE_KEY_CONTENT, next);
       return { content: next };
     });
@@ -165,7 +207,9 @@ export const useMockDb = create<DatabaseState>((set, get) => ({
   importContent: (units) => {
     const cleanUnits = sanitizeData(units);
     set((state) => {
-      const next = [...cleanUnits, ...state.content];
+      const incomingIds = new Set(cleanUnits.map(u => u.id));
+      const filtered = state.content.filter(c => !incomingIds.has(c.id));
+      const next = deduplicateContentUnits([...cleanUnits, ...filtered]);
       saveToStorage(STORAGE_KEY_CONTENT, next);
       return { content: next };
     });
