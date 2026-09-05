@@ -1,31 +1,30 @@
 export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
+import { getCloudflareD1 } from '@/shared/utils/cloudflare-bindings';
 
 export async function GET(req: NextRequest) {
   try {
-    // Cloudflare bindings are injected into process.env in Edge runtime
-    const db = process.env.infohub_db as any;
+    const db = getCloudflareD1();
     
     if (!db) {
       return NextResponse.json({ 
-        error: 'Database binding (infohub_db) not found.',
-        info: 'Make sure it is configured in wrangler.toml or CF dashboard.'
-      }, { status: 500 });
+        error: 'Database binding (infohub_db_v2 or infohub_db) not detected.',
+        details: 'Ensure D1 Database binding is added in Cloudflare Dashboard (Pages/Worker -> Settings -> Bindings) or wrangler.toml'
+      }, { status: 503 });
     }
 
     const { searchParams } = new URL(req.url);
     const type = searchParams.get('type');
     
-    let query = 'SELECT * FROM content_units ORDER BY updated_at DESC';
     let results;
 
     if (type) {
       const stmt = db.prepare('SELECT * FROM content_units WHERE type = ? ORDER BY updated_at DESC').bind(type);
       const res = await stmt.all();
-      results = res.results;
+      results = res.results || [];
     } else {
-      const res = await db.prepare(query).all();
-      results = res.results;
+      const res = await db.prepare('SELECT * FROM content_units ORDER BY updated_at DESC').all();
+      results = res.results || [];
     }
 
     // Parse JSON fields (blocks, topic_ids, modules, relations) since SQLite stores them as strings
@@ -48,10 +47,13 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const db = process.env.infohub_db as any;
+    const db = getCloudflareD1();
     
     if (!db) {
-      return NextResponse.json({ error: 'Database binding not found.' }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Database binding (infohub_db_v2 or infohub_db) not detected.',
+        details: 'Ensure D1 Database binding is added in Cloudflare Dashboard (Pages/Worker -> Settings -> Bindings) or wrangler.toml'
+      }, { status: 503 });
     }
 
     const body = await req.json();
@@ -102,9 +104,12 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const db = process.env.infohub_db as any;
+    const db = getCloudflareD1();
     if (!db) {
-      return NextResponse.json({ error: 'Database binding not found.' }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Database binding (infohub_db_v2 or infohub_db) not detected.',
+        details: 'Ensure D1 Database binding is added in Cloudflare Dashboard (Pages/Worker -> Settings -> Bindings) or wrangler.toml'
+      }, { status: 503 });
     }
 
     const { searchParams } = new URL(req.url);

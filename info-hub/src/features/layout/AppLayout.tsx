@@ -19,16 +19,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     setIsOpen(false);
   }, [pathname]);
 
-  // Запобігаємо скролу сторінки під відкритим мобільним меню
+  // Надійне блокування скролу фонової сторінки на мобільних при відкритому меню
   useEffect(() => {
-    if (isOpen && typeof window !== 'undefined' && window.innerWidth < 768) {
+    if (typeof window === 'undefined') return;
+    if (isOpen) {
+      const scrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.left = '0';
+      document.body.style.right = '0';
       document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
+      return () => {
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.left = '';
+        document.body.style.right = '';
+        document.body.style.overflow = '';
+        window.scrollTo(0, scrollY);
+      };
     }
-    return () => {
-      document.body.style.overflow = '';
-    };
   }, [isOpen]);
 
   // Ініціалізуємо стан зі storage після першого рендеру для уникнення Hydration Mismatch
@@ -39,14 +48,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-[#FAFAFA] text-stone-800 font-sans antialiased w-full max-w-full overflow-x-hidden">
-      <Suspense fallback={<div className="w-64 border-r border-stone-200 bg-[#FAFAFA] hidden md:flex flex-col shrink-0 h-screen" />}>
+    <div className="flex min-h-screen bg-[#FAFAFA] text-stone-800 font-sans antialiased w-full max-w-full">
+      <Suspense fallback={<div className="w-64 border-r border-stone-200 bg-[#FAFAFA] hidden md:flex flex-col shrink-0 h-screen sticky top-0" />}>
         <Sidebar isOpen={isOpen} onClose={() => setIsOpen(false)} />
       </Suspense>
       
-      <div className="flex-1 flex flex-col min-h-screen max-w-full overflow-x-hidden w-full">
-        {/* Мобільний хедер (видимий тільки на екранах < md) */}
-        <header className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-stone-200 shrink-0 sticky top-0 z-30">
+      <div className="flex-1 flex flex-col min-h-screen max-w-full w-full relative">
+        {/* Мобільний фіксований хедер */}
+        <header className="md:hidden flex items-center justify-between px-4 h-14 bg-white/95 backdrop-blur-md border-b border-stone-200/90 shrink-0 sticky top-0 z-40 shadow-2xs">
           <Link href="/" className="flex items-center gap-2" onClick={() => setIsOpen(false)}>
             <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white font-bold shadow-xs">iH</div>
             <span className="font-semibold text-lg tracking-tight text-stone-800">InfoHub</span>
@@ -73,7 +82,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         
-        <main className="flex-1 flex flex-col w-full max-w-full overflow-x-hidden">
+        <main className="flex-1 flex flex-col w-full max-w-full">
           {children}
         </main>
       </div>

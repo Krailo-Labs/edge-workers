@@ -50,18 +50,19 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
 
   return (
     <>
-      {/* Mobile Overlay */}
+      {/* Mobile Overlay with touch-none and scroll-lock */}
       <div 
         className={cn(
-          "fixed inset-0 bg-stone-900/40 backdrop-blur-xs z-40 md:hidden transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          "fixed inset-0 bg-stone-900/50 backdrop-blur-xs z-50 md:hidden transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] touch-none",
           isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         )} 
-        onClick={onClose} 
+        onClick={onClose}
+        onTouchMove={(e) => e.preventDefault()}
       />
 
       {/* Sidebar container */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] border-r border-stone-200 bg-[#FAFAFA] flex flex-col h-screen transform transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:sticky md:top-0 md:translate-x-0 shadow-2xl md:shadow-none will-change-transform",
+        "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] border-r border-stone-200 bg-[#FAFAFA] flex flex-col h-[100dvh] md:h-screen transform transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:sticky md:top-0 md:translate-x-0 shadow-2xl md:shadow-none overscroll-contain will-change-transform",
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         {/* Brand Header */}
@@ -105,7 +106,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
         </div>
 
         {/* Navigation Items with RBAC Mode handling */}
-        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
+        <nav className="flex-1 overflow-y-auto overscroll-contain px-2 py-3 space-y-1">
           {mainNav.map((item) => {
             const accessMode = checkNavAccess(item.href);
             if (accessMode === 'HIDDEN') return null;

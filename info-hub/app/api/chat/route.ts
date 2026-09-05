@@ -1,5 +1,6 @@
 export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
+import { getCloudflareAI } from '@/shared/utils/cloudflare-bindings';
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,32 +16,33 @@ export async function POST(req: NextRequest) {
       systemInstruction += ' Ти спілкуєшся з Партнером. Допомагай з методикою викладання та оптимізацією уроків.';
     }
 
-    const ai = process.env.AI as any;
+    const ai = getCloudflareAI();
 
-    if (ai && typeof ai.run === 'function') {
-      const formattedMessages = [
-        { role: 'system', content: systemInstruction },
-        ...messages.map((m: any) => ({
-          role: m.role === 'user' ? 'user' : 'assistant',
-          content: m.text || m.content || ''
-        }))
-      ];
-
-      const response = await ai.run(selectedModel, {
-        messages: formattedMessages
-      });
-
-      const responseText = response?.response || response?.text || (typeof response === 'string' ? response : JSON.stringify(response));
-      return NextResponse.json({ text: responseText });
+    if (!ai || typeof ai.run !== 'function') {
+      return NextResponse.json({ 
+        error: 'Cloudflare Workers AI біндінг "AI" не виявлено.',
+        details: 'Переконайтеся, що в Cloudflare Dashboard (Settings -> Bindings) додано Workers AI з іменем "AI", або у wrangler.toml додано [ai] binding = "AI".'
+      }, { status: 503 });
     }
 
-    // Local development fallback
-    const latestMessage = messages?.[messages.length - 1]?.text || 'Привіт';
-    const fallbackText = `### 💡 Відповідь AI Ментора (${selectedModel})\n\nДякую за запитання: **"${latestMessage}"**.\n\nУ локальному середовищі перегляду відповідь згенеровано в режимі симуляції Cloudflare Workers AI. При розгортанні на вашому воркері з біндінгом \`[ai] binding = "AI"\` запит виконується нативною моделлю \`${selectedModel}\`.\n\n* **Порада:** Для глибшого аналізу виділіть будь-яке речення безпосередньо в тексті уроку або скористайтеся контекстними підказками.`;
+    const formattedMessages = [
+      { role: 'system', content: systemInstruction },
+      ...messages.map((m: any) => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.text || m.content || ''
+      }))
+    ];
 
-    return NextResponse.json({ text: fallbackText });
+    const response = await ai.run(selectedModel, {
+      messages: formattedMessages
+    });
+
+    const responseText = response?.response || response?.text || (typeof response === 'string' ? response : JSON.stringify(response));
+    return NextResponse.json({ text: responseText });
   } catch (error: any) {
     console.error('Chat API Error:', error);
-    return NextResponse.json({ text: `Сталася помилка при зверненні до Cloudflare AI: ${error.message}` }, { status: 500 });
+    return NextResponse.json({ 
+      error: `Помилка виконання Cloudflare Workers AI: ${error.message}` 
+    }, { status: 500 });
   }
 }

@@ -19,7 +19,7 @@ export function Dashboard() {
   const recentContent = content.slice(0, 6);
   
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto w-full space-y-10">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6 sm:space-y-8 pb-10 sm:pb-12">
       
       {/* 1. TOP: Header & AI Synthesis / Knowledge Digest */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">

@@ -133,7 +133,7 @@ export default function ContentViewer() {
       />
 
       {/* 2. Main Content Area */}
-      <div className="flex-1 w-full max-w-4xl mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:p-10 pb-36 min-w-0 overflow-x-hidden">
+      <div className="flex-1 w-full max-w-4xl mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:p-10 pb-12 min-w-0">
         
         {/* Breadcrumb Bar */}
         <div className="flex items-center gap-1.5 sm:gap-2 text-stone-500 mb-6 sm:mb-8 text-xs sm:text-sm font-medium flex-wrap min-w-0">

@@ -106,21 +106,21 @@ interface DatabaseState {
 }
 
 export const useMockDb = create<DatabaseState>((set, get) => ({
-  content: demoContent,
-  topics: demoTopics,
-  comments: demoComments,
-  feedback: demoFeedback,
+  content: [],
+  topics: [],
+  comments: [],
+  feedback: [],
   isCloudflareConnected: false,
   
   initializeFromStorage: async () => {
     if (typeof window === 'undefined') return;
-    const rawContent = loadFromStorage<ContentUnit[]>(STORAGE_KEY_CONTENT, demoContent);
+    const rawContent = loadFromStorage<ContentUnit[]>(STORAGE_KEY_CONTENT, []);
     const cleanContent = deduplicateContentUnits(rawContent);
     set({
       content: cleanContent,
-      topics: loadFromStorage<Topic[]>(STORAGE_KEY_TOPICS, demoTopics),
-      comments: loadFromStorage<Comment[]>(STORAGE_KEY_COMMENTS, demoComments),
-      feedback: loadFromStorage<Feedback[]>(STORAGE_KEY_FEEDBACK, demoFeedback),
+      topics: loadFromStorage<Topic[]>(STORAGE_KEY_TOPICS, []),
+      comments: loadFromStorage<Comment[]>(STORAGE_KEY_COMMENTS, []),
+      feedback: loadFromStorage<Feedback[]>(STORAGE_KEY_FEEDBACK, []),
     });
 
     // Try fetching from Cloudflare D1 asynchronously
@@ -128,19 +128,19 @@ export const useMockDb = create<DatabaseState>((set, get) => ({
       const res = await fetch('/api/content');
       if (res.ok) {
         const d1Data = await res.json();
-        if (Array.isArray(d1Data) && d1Data.length > 0) {
-          // Merge D1 data (it takes precedence) with local data
-          set((state) => {
-            const incomingIds = new Set(d1Data.map(d => d.id));
-            const filteredLocal = state.content.filter(c => !incomingIds.has(c.id));
-            const merged = deduplicateContentUnits([...d1Data, ...filteredLocal]);
-            saveToStorage(STORAGE_KEY_CONTENT, merged);
-            return { content: merged, isCloudflareConnected: true };
+        if (Array.isArray(d1Data)) {
+          set({
+            content: d1Data,
+            isCloudflareConnected: true
           });
+          saveToStorage(STORAGE_KEY_CONTENT, d1Data);
         }
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        console.warn('Cloudflare D1 status:', res.status, errJson);
       }
     } catch (e) {
-      console.log('Running in local mode, CF D1 fetch failed:', e);
+      console.warn('Cloudflare D1 connection check:', e);
     }
   },
   
@@ -276,15 +276,15 @@ export const useMockDb = create<DatabaseState>((set, get) => ({
 
   resetToDefaults: () => {
     set({
-      content: demoContent,
-      topics: demoTopics,
-      comments: demoComments,
-      feedback: demoFeedback,
+      content: [],
+      topics: [],
+      comments: [],
+      feedback: [],
     });
-    saveToStorage(STORAGE_KEY_CONTENT, demoContent);
-    saveToStorage(STORAGE_KEY_TOPICS, demoTopics);
-    saveToStorage(STORAGE_KEY_COMMENTS, demoComments);
-    saveToStorage(STORAGE_KEY_FEEDBACK, demoFeedback);
+    saveToStorage(STORAGE_KEY_CONTENT, []);
+    saveToStorage(STORAGE_KEY_TOPICS, []);
+    saveToStorage(STORAGE_KEY_COMMENTS, []);
+    saveToStorage(STORAGE_KEY_FEEDBACK, []);
   },
 
   setCloudflareConnected: (connected) => set({ isCloudflareConnected: connected })

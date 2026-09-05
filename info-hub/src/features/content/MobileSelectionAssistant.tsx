@@ -44,6 +44,27 @@ export function MobileSelectionAssistant({ contentTitle, contentType, onOpenAiTa
     setAiResult(null);
   }, [pathname]);
 
+  // Lock body scroll while bottom sheet is open so background never scrolls
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isOpenSheet && !isClosingSheet) {
+      const scrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.left = '0';
+      document.body.style.right = '0';
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.left = '';
+        document.body.style.right = '';
+        document.body.style.overflow = '';
+        window.scrollTo(0, scrollY);
+      };
+    }
+  }, [isOpenSheet, isClosingSheet]);
+
   const dismissCapsule = useCallback(() => {
     setIsClosingCapsule(true);
     setTimeout(() => {
@@ -278,7 +299,7 @@ export function MobileSelectionAssistant({ contentTitle, contentType, onOpenAiTa
       {isOpenSheet && (
         <div 
           className={cn(
-            "fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 transition-all duration-450 ease-[cubic-bezier(0.22,1,0.36,1)]",
+            "fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 transition-all duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] touch-none",
             isClosingSheet ? "bg-stone-900/0 backdrop-blur-none pointer-events-none" : "bg-stone-900/60 backdrop-blur-xs"
           )}
           onClick={(e) => {
@@ -286,10 +307,15 @@ export function MobileSelectionAssistant({ contentTitle, contentType, onOpenAiTa
               handleCloseSheet();
             }
           }}
+          onTouchMove={(e) => {
+            if (e.target === e.currentTarget) {
+              e.preventDefault();
+            }
+          }}
         >
           <div
             className={cn(
-              "w-full sm:max-w-xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-stone-200 flex flex-col max-h-[85vh] sm:max-h-[80vh] overflow-hidden transition-all duration-450 ease-[cubic-bezier(0.22,1,0.36,1)]",
+              "w-full sm:max-w-xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-stone-200 flex flex-col max-h-[85vh] sm:max-h-[80vh] overflow-hidden overscroll-contain transition-all duration-450 ease-[cubic-bezier(0.22,1,0.36,1)]",
               isClosingSheet 
                 ? "translate-y-full sm:translate-y-24 opacity-0 scale-95 pointer-events-none" 
                 : "translate-y-0 opacity-100 scale-100 animate-sheet-up"
@@ -380,7 +406,7 @@ export function MobileSelectionAssistant({ contentTitle, contentType, onOpenAiTa
             </div>
 
             {/* AI Result Content */}
-            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+            <div className="p-4 sm:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4">
               {isLoading ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-3 text-stone-500">
                   <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />

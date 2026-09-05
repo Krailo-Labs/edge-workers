@@ -783,7 +783,7 @@ export default function ImportPage() {
   };
 
   return (
-    <div className="p-4 sm:p-8 max-w-5xl mx-auto w-full pb-28 md:pb-12">
+    <div className="p-4 sm:p-8 max-w-5xl mx-auto w-full pb-10 sm:pb-12">
       
       {/* Header */}
       <header className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -867,74 +867,48 @@ export default function ImportPage() {
             </div>
           </div>
 
-          {/* Preset or Raw text Paste Area */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* 1. Quick Presets Card */}
-            <Card className="p-6 rounded-3xl border border-stone-200/90 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-2 text-stone-900 font-bold text-base mb-2">
-                  <Sparkles className="w-5 h-5 text-emerald-600" />
-                  <span>Швидкий приклад готового курсу</span>
-                </div>
-                <p className="text-xs text-stone-500 mb-4 leading-relaxed">
-                  Завантажте еталонну структуру курсу «Бінарні опціони» з розбором свічок OHLC, формулами payout, чеклістами та інтерактивними блоками самоперевірки.
-                </p>
-              </div>
-
-              <Button 
-                variant="secondary" 
-                onClick={handleLoadDemoPackage}
-                disabled={isProcessing}
-                className="w-full gap-2 rounded-xl justify-center border-stone-200 bg-white hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 font-semibold"
-              >
-                <BookOpen className="w-4 h-4 text-emerald-600" />
-                <span>Завантажити еталонний курс</span>
-              </Button>
-            </Card>
-
-            {/* 2. Direct Raw Text Input */}
-            <Card className="p-6 rounded-3xl border border-stone-200/90 flex flex-col">
+          {/* Raw text Paste Area */}
+          <div className="max-w-4xl mx-auto w-full">
+            <Card className="p-6 sm:p-8 rounded-3xl border border-stone-200/90 flex flex-col">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2 text-stone-900 font-bold text-base">
                   <Code className="w-5 h-5 text-emerald-600" />
                   <span>Вставка тексту уроку чи маніфесту</span>
                 </div>
-                <span className="text-[10px] text-stone-400 font-mono">Markdown / YAML</span>
+                <span className="text-[10px] text-stone-400 font-mono">Markdown / YAML / TXT</span>
               </div>
               <p className="text-xs text-stone-500 mb-3">
-                Вставте текст уроку з метаданими (<code>id:</code>, <code>Мета уроку</code>, <code>Ключові поняття</code>, <code>Практика</code>).
+                Вставте текст уроку, статті або маніфесту. Ви можете скористатися кнопкою AI-структурування для автоматичного створення блоків та практичних завдань.
               </p>
 
               <Textarea 
                 value={rawText}
                 onChange={(e) => setRawText(e.target.value)}
-                placeholder={'id: lesson-01-product type: lesson title: "Що таке бінарний опціон..."\nМета уроку\nЗрозуміти механіку контракту...\n\nКлючові поняття\n**- OHLC\n**- payout\n\nПрактика\nЗаписати 20 контрактів...'}
-                className="h-32 text-xs font-mono resize-none rounded-xl mb-3 bg-stone-50/50"
+                placeholder={'Вставте конспект, статтю або розмітку уроку...'}
+                className="h-36 text-xs font-mono resize-none rounded-xl mb-4 bg-stone-50/50"
               />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="flex flex-wrap items-center gap-3">
                 <Button 
                   onClick={handleAiStructureAndParse}
                   disabled={!rawText.trim() || isProcessing}
-                  className="w-full gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl justify-center text-xs font-semibold shadow-xs"
+                  className="gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl justify-center text-xs font-semibold shadow-xs"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-purple-200" />
-                  <span>AI структурування</span>
+                  <span>AI структурування (Cloudflare AI)</span>
                 </Button>
 
                 <Button 
                   variant="secondary"
                   onClick={() => handleParseRawText()}
                   disabled={!rawText.trim() || isProcessing}
-                  className="w-full gap-2 bg-white border-stone-200 hover:bg-stone-50 text-stone-800 rounded-xl justify-center text-xs font-semibold"
+                  className="gap-2 bg-white border-stone-200 hover:bg-stone-50 text-stone-800 rounded-xl justify-center text-xs font-semibold"
                 >
                   <span>Розпарсити як є</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Button>
               </div>
             </Card>
-
           </div>
 
           {isProcessing && (

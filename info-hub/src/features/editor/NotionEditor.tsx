@@ -638,7 +638,7 @@ function example() {
       </div>
 
       {/* Main Notion-Style Document Canvas */}
-      <div className="flex-1 overflow-y-auto bg-stone-50/50 flex justify-center relative p-2 sm:p-6">
+      <div className="flex-1 overflow-y-auto overscroll-contain bg-stone-50/50 flex justify-center relative p-2 sm:p-6">
         <div className="w-full max-w-4xl bg-white min-h-[calc(100vh-140px)] p-6 sm:p-12 lg:p-16 shadow-xs border border-stone-200/70 rounded-2xl flex flex-col relative">
           
           {/* Document Title Input */}
