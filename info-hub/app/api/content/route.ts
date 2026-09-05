@@ -28,11 +28,16 @@ export async function GET(req: NextRequest) {
       results = res.results;
     }
 
-    // Parse JSON fields (blocks, topic_ids) since SQLite stores them as strings
+    // Parse JSON fields (blocks, topic_ids, modules, relations) since SQLite stores them as strings
     const parsedResults = results.map((row: any) => ({
       ...row,
-      blocks: row.blocks ? JSON.parse(row.blocks) : [],
-      topicIds: row.topic_ids ? JSON.parse(row.topic_ids) : []
+      topicIds: row.topic_ids ? (typeof row.topic_ids === 'string' ? JSON.parse(row.topic_ids) : row.topic_ids) : [],
+      blocks: row.blocks ? (typeof row.blocks === 'string' ? JSON.parse(row.blocks) : row.blocks) : [],
+      relations: row.relations ? (typeof row.relations === 'string' ? JSON.parse(row.relations) : row.relations) : [],
+      modules: row.modules ? (typeof row.modules === 'string' ? JSON.parse(row.modules) : row.modules) : undefined,
+      authorId: row.author_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
     }));
 
     return NextResponse.json(parsedResults);
@@ -50,11 +55,11 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { id, title, type, state, maturity, topicIds, purpose, visibility, blocks } = body;
+    const { id, title, type, state, maturity, topicIds, purpose, visibility, blocks, relations, modules, authorId } = body;
     
     const stmt = db.prepare(`
-      INSERT INTO content_units (id, title, type, state, maturity, topic_ids, purpose, visibility, blocks, relations, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      INSERT INTO content_units (id, title, type, state, maturity, topic_ids, purpose, visibility, blocks, relations, modules, author_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET 
         title = excluded.title,
         type = excluded.type,
@@ -64,6 +69,9 @@ export async function POST(req: NextRequest) {
         purpose = excluded.purpose,
         visibility = excluded.visibility,
         blocks = excluded.blocks,
+        relations = excluded.relations,
+        modules = excluded.modules,
+        author_id = excluded.author_id,
         updated_at = CURRENT_TIMESTAMP
     `);
 
@@ -76,7 +84,10 @@ export async function POST(req: NextRequest) {
       JSON.stringify(topicIds || []), 
       purpose || 'PERSONAL', 
       visibility || 'PRIVATE', 
-      JSON.stringify(blocks || [])
+      JSON.stringify(blocks || []),
+      JSON.stringify(relations || []),
+      modules ? JSON.stringify(modules) : null,
+      authorId || null
     ).run();
 
     return NextResponse.json({
@@ -86,5 +97,26 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     return NextResponse.json({ status: 'error', error: err.message }, { status: 400 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const db = process.env.infohub_db as any;
+    if (!db) {
+      return NextResponse.json({ error: 'Database binding not found.' }, { status: 500 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID is required' }, { status: 400 });
+    }
+
+    await db.prepare('DELETE FROM content_units WHERE id = ?').bind(id).run();
+    return NextResponse.json({ status: 'ok', deleted: id });
+  } catch (err: any) {
+    return NextResponse.json({ status: 'error', error: err.message }, { status: 500 });
   }
 }

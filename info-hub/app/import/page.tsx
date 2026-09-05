@@ -573,17 +573,18 @@ export default function ImportPage() {
   };
 
   // Smart Parsing of Raw Text Paste (Handles structured lessons, YAML frontmatter, markdown sections)
-  const handleParseRawText = () => {
-    if (!rawText.trim()) return;
+  const handleParseRawText = (textOverride?: string) => {
+    const targetText = textOverride || rawText;
+    if (!targetText.trim()) return;
 
     try {
-      // 1. Check if rawText is YAML or JSON manifest
+      // 1. Check if targetText is YAML or JSON manifest
       let isManifest = false;
       let manifestObj: any = null;
 
-      if (rawText.trim().startsWith('{') || rawText.trim().startsWith('---') || rawText.includes('structure:')) {
+      if (targetText.trim().startsWith('{') || targetText.trim().startsWith('---') || targetText.includes('structure:')) {
         try {
-          manifestObj = rawText.trim().startsWith('{') ? JSON.parse(rawText) : yaml.parse(rawText);
+          manifestObj = targetText.trim().startsWith('{') ? JSON.parse(targetText) : yaml.parse(targetText);
           if (manifestObj && (manifestObj.structure || manifestObj.modules || manifestObj.title)) {
             isManifest = true;
           }
@@ -624,8 +625,7 @@ export default function ImportPage() {
       }
 
       // 2. Parse structured lesson text directly with semantic section detection
-      // Check if text has multiple lessons separated by "id: lesson-"
-      const lessonChunks = rawText.split(/(?=\nid:\s*lesson-|^id:\s*lesson-)/i).filter(c => c.trim().length > 0);
+      const lessonChunks = targetText.split(/(?=\nid:\s*lesson-|^id:\s*lesson-)/i).filter(c => c.trim().length > 0);
 
       const parsedLessons: ParsedLesson[] = lessonChunks.map((chunk, idx) => {
         const parsed = parseStructuredLessonMarkdown(chunk, {}, `Урок ${idx + 1}`);
@@ -668,6 +668,34 @@ export default function ImportPage() {
     } catch (err) {
       console.error('Text parsing error:', err);
       alert('Помилка аналізу тексту.');
+    }
+  };
+
+  const handleAiStructureAndParse = async () => {
+    if (!rawText.trim()) return;
+    setIsProcessing(true);
+    setProcessingStatus('Cloudflare AI аналізує текст та формує структуру уроку...');
+
+    try {
+      const res = await fetch('/api/ai/structure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: rawText.trim() })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.structuredText) {
+          setRawText(data.structuredText);
+          handleParseRawText(data.structuredText);
+          return;
+        }
+      }
+      handleParseRawText();
+    } catch (e) {
+      console.error('AI Structure error:', e);
+      handleParseRawText();
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -885,14 +913,26 @@ export default function ImportPage() {
                 className="h-32 text-xs font-mono resize-none rounded-xl mb-3 bg-stone-50/50"
               />
 
-              <Button 
-                onClick={handleParseRawText}
-                disabled={!rawText.trim() || isProcessing}
-                className="w-full gap-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl justify-center text-xs font-semibold"
-              >
-                <span>Структурувати та розпарсити</span>
-                <ArrowRight className="w-4 h-4" />
-              </Button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Button 
+                  onClick={handleAiStructureAndParse}
+                  disabled={!rawText.trim() || isProcessing}
+                  className="w-full gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl justify-center text-xs font-semibold shadow-xs"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-200" />
+                  <span>AI структурування</span>
+                </Button>
+
+                <Button 
+                  variant="secondary"
+                  onClick={() => handleParseRawText()}
+                  disabled={!rawText.trim() || isProcessing}
+                  className="w-full gap-2 bg-white border-stone-200 hover:bg-stone-50 text-stone-800 rounded-xl justify-center text-xs font-semibold"
+                >
+                  <span>Розпарсити як є</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
             </Card>
 
           </div>

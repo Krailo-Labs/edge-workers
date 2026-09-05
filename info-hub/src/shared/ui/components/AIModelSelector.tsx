@@ -44,14 +44,20 @@ export function AIModelSelector({ selectedModel, onSelectModel }: AIModelSelecto
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-72 z-50 bg-white border border-stone-200 rounded-2xl shadow-2xl p-2 space-y-1.5 animate-in fade-in zoom-in-95 duration-150">
-          <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
-            Вибір нейромоделі
+        <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 max-h-[75vh] overflow-y-auto z-50 bg-white border border-stone-200 rounded-2xl shadow-2xl p-2 space-y-1.5 animate-in fade-in zoom-in-95 duration-150 scrollbar-thin">
+          <div className="px-2.5 py-1.5 flex items-center justify-between border-b border-stone-100">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+              Cloudflare Workers AI
+            </span>
+            <span className="text-[10px] font-mono text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md font-semibold">
+              Free & Serverless
+            </span>
           </div>
 
           {AI_CONFIG.models.map((model) => {
             const isSelected = model.id === selectedModel;
-            const isPro = model.id.includes('pro') || model.id.includes('plus');
+            const tag = (model as any).tag || 'AI';
+            const provider = (model as any).provider || 'Cloudflare';
             return (
               <button
                 key={model.id}
@@ -64,27 +70,25 @@ export function AIModelSelector({ selectedModel, onSelectModel }: AIModelSelecto
                   "w-full flex items-start justify-between p-2.5 rounded-xl text-left transition-all text-xs",
                   isSelected 
                     ? "bg-purple-600 text-white shadow-xs font-semibold" 
-                    : "text-stone-800 hover:bg-purple-50/60"
+                    : "text-stone-800 hover:bg-purple-50/70"
                 )}
               >
                 <div className="flex items-start gap-2.5 min-w-0">
                   <div className={cn(
-                    "w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5",
-                    isSelected ? "bg-white/20 text-white" : isPro ? "bg-purple-100 text-purple-700" : "bg-emerald-100 text-emerald-700"
+                    "w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 text-[11px] font-bold",
+                    isSelected ? "bg-white/20 text-white" : "bg-purple-100 text-purple-700"
                   )}>
-                    {isPro ? <Brain className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
+                    {provider.slice(0, 2).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-semibold truncate">{model.name}</span>
-                      {isPro && (
-                        <span className={cn(
-                          "text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase tracking-wider",
-                          isSelected ? "bg-purple-400 text-purple-950" : "bg-purple-100 text-purple-800"
-                        )}>
-                          Pro
-                        </span>
-                      )}
+                      <span className={cn(
+                        "text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase tracking-wider",
+                        isSelected ? "bg-purple-400 text-purple-950" : "bg-stone-100 text-stone-600"
+                      )}>
+                        {tag}
+                      </span>
                     </div>
                     <div className={cn("text-[11px] line-clamp-1 mt-0.5", isSelected ? "text-purple-100" : "text-stone-500")}>
                       {model.description}

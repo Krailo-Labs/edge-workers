@@ -192,6 +192,12 @@ export const useMockDb = create<DatabaseState>((set, get) => ({
     set((state) => {
       const next = state.content.filter(c => c.id !== id);
       saveToStorage(STORAGE_KEY_CONTENT, next);
+      
+      // Async sync deletion to CF D1
+      fetch(`/api/content?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      }).catch(e => console.error('Failed to sync deletion with D1:', e));
+
       return { content: next };
     });
   },
@@ -254,6 +260,16 @@ export const useMockDb = create<DatabaseState>((set, get) => ({
       const filtered = state.content.filter(c => !incomingIds.has(c.id));
       const next = deduplicateContentUnits([...cleanUnits, ...filtered]);
       saveToStorage(STORAGE_KEY_CONTENT, next);
+
+      // Async sync imported units to CF D1
+      cleanUnits.forEach(unit => {
+        fetch('/api/content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(unit)
+        }).catch(e => console.error('Failed to sync imported unit to D1:', e));
+      });
+
       return { content: next };
     });
   },

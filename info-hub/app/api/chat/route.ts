@@ -1,49 +1,46 @@
+export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, userRole } = await req.json();
+    const { messages, userRole, model } = await req.json();
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ 
-        text: 'Помилка: API ключ Gemini не знайдено в конфігурації. Будь ласка, додайте GEMINI_API_KEY в .env або налаштування платформи.' 
-      });
-    }
+    const selectedModel = model || '@cf/meta/llama-3.1-8b-instruct-fp8';
 
-    const ai = new GoogleGenAI({ apiKey });
-    
     // Construct system instructions based on role
-    let systemInstruction = 'Ти - корисний AI-асистент для освітньої платформи InfoHub. Відповідай коротко, професійно та структуровано.';
+    let systemInstruction = 'Ти — розумний, ерудований та доброзичливий AI-ментор платформи InfoHub. Твоя мета — допомагати користувачу вивчати матеріали, давати чіткі, практичні та структуровані пояснення українською мовою. Обов\'язково використовуй Markdown-розмітку (заголовки, жирний шрифт, списки, таблиці, цитати).';
     if (userRole === 'ADMIN') {
-      systemInstruction += ' Ти спілкуєшся з Адміністратором. Ти маєш доступ до всіх тем та можеш допомагати з керуванням платформою.';
+      systemInstruction += ' Ти спілкуєшся з Адміністратором платформи. Надавай глибоку системну аналітику та допомогу з контентом.';
     } else if (userRole === 'PARTNER') {
-      systemInstruction += ' Ти спілкуєшся з Партнером. Будь привітним, допомагай з ідеями для контенту та перевірками.';
+      systemInstruction += ' Ти спілкуєшся з Партнером. Допомагай з методикою викладання та оптимізацією уроків.';
     }
 
-    // Since we're using @google/genai, we map messages to the expected format
-    const history = messages.slice(0, -1).map((m: any) => ({
-      role: m.role === 'user' ? 'user' : 'model',
-      parts: [{ text: m.text }]
-    }));
-    
-    const latestMessage = messages[messages.length - 1].text;
+    const ai = process.env.AI as any;
 
-    const chat = ai.chats.create({
-      model: 'gemini-3.5-flash',
-      history: history,
-      config: {
-        systemInstruction: systemInstruction,
-        temperature: 0.7
-      }
-    });
+    if (ai && typeof ai.run === 'function') {
+      const formattedMessages = [
+        { role: 'system', content: systemInstruction },
+        ...messages.map((m: any) => ({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: m.text || m.content || ''
+        }))
+      ];
 
-    const response = await chat.sendMessage(latestMessage);
+      const response = await ai.run(selectedModel, {
+        messages: formattedMessages
+      });
 
-    return NextResponse.json({ text: response.text });
+      const responseText = response?.response || response?.text || (typeof response === 'string' ? response : JSON.stringify(response));
+      return NextResponse.json({ text: responseText });
+    }
+
+    // Local development fallback
+    const latestMessage = messages?.[messages.length - 1]?.text || 'Привіт';
+    const fallbackText = `### 💡 Відповідь AI Ментора (${selectedModel})\n\nДякую за запитання: **"${latestMessage}"**.\n\nУ локальному середовищі перегляду відповідь згенеровано в режимі симуляції Cloudflare Workers AI. При розгортанні на вашому воркері з біндінгом \`[ai] binding = "AI"\` запит виконується нативною моделлю \`${selectedModel}\`.\n\n* **Порада:** Для глибшого аналізу виділіть будь-яке речення безпосередньо в тексті уроку або скористайтеся контекстними підказками.`;
+
+    return NextResponse.json({ text: fallbackText });
   } catch (error: any) {
     console.error('Chat API Error:', error);
-    return NextResponse.json({ text: `Сталася помилка при зверненні до AI: ${error.message}` }, { status: 500 });
+    return NextResponse.json({ text: `Сталася помилка при зверненні до Cloudflare AI: ${error.message}` }, { status: 500 });
   }
 }

@@ -1,14 +1,15 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   Sparkles, Lightbulb, Languages, BookmarkPlus, 
-  Copy, Check, ArrowRight, Loader2, ChevronDown 
+  Copy, Check, ArrowRight, Loader2, ChevronDown, MessageSquare 
 } from 'lucide-react';
 import { Button } from '@/shared/ui/components';
 import { useContentRepo } from '@/data/mock/db';
 import { cn } from '@/shared/utils';
+import { MarkdownRenderer } from '@/features/editor/MarkdownRenderer';
 
 interface MobileSelectionAssistantProps {
   contentTitle: string;
@@ -18,6 +19,7 @@ interface MobileSelectionAssistantProps {
 
 export function MobileSelectionAssistant({ contentTitle, contentType, onOpenAiTab }: MobileSelectionAssistantProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [selectedText, setSelectedText] = useState("");
   const [isOpenSheet, setIsOpenSheet] = useState(false);
   const [isClosingSheet, setIsClosingSheet] = useState(false);
@@ -258,6 +260,16 @@ export function MobileSelectionAssistant({ contentTitle, contentType, onOpenAiTa
               <BookmarkPlus className="w-3.5 h-3.5 text-purple-400" />
               <span>В нотатки</span>
             </button>
+            <button
+              onClick={() => {
+                const prompt = `Поясни детально та допоможи розібратися з фрагментом: "${selectedText}"`;
+                router.push(`/ai?prompt=${encodeURIComponent(prompt)}&context=${encodeURIComponent(contentTitle)}`);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white rounded-xl text-xs font-semibold shrink-0 transition-all shadow-xs"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>AI Чат</span>
+            </button>
           </div>
         </div>
       )}
@@ -375,8 +387,8 @@ export function MobileSelectionAssistant({ contentTitle, contentType, onOpenAiTa
                   <span className="text-xs font-medium animate-pulse">Генерую зрозуміле пояснення...</span>
                 </div>
               ) : aiResult ? (
-                <div className="text-stone-800 text-sm leading-relaxed whitespace-pre-wrap font-sans bg-stone-50/50 p-4 rounded-2xl border border-stone-100">
-                  {aiResult}
+                <div className="text-stone-800 text-sm leading-relaxed font-sans bg-stone-50/70 p-4 rounded-2xl border border-stone-200/70">
+                  <MarkdownRenderer content={aiResult} />
                 </div>
               ) : null}
             </div>
@@ -407,19 +419,23 @@ export function MobileSelectionAssistant({ contentTitle, contentType, onOpenAiTa
                 </Button>
               </div>
 
-              {onOpenAiTab && (
-                <Button
-                  size="sm"
-                  onClick={() => {
+              <Button
+                size="sm"
+                onClick={() => {
+                  const prompt = `Поясни детально та допоможи розібратися з цим фрагментом: "${selectedText}"`;
+                  if (onOpenAiTab && typeof window !== 'undefined' && window.innerWidth >= 1280) {
                     onOpenAiTab(selectedText);
-                    handleCloseSheet();
-                  }}
-                  className="text-xs gap-1.5 bg-stone-900 hover:bg-stone-800 text-white"
-                >
-                  <span>Відкрити в AI чаті</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Button>
-              )}
+                  } else {
+                    router.push(`/ai?prompt=${encodeURIComponent(prompt)}&context=${encodeURIComponent(contentTitle)}`);
+                  }
+                  handleCloseSheet();
+                }}
+                className="text-xs gap-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-xs"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Відкрити в AI чаті</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
             </div>
           </div>
         </div>

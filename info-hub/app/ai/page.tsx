@@ -7,6 +7,7 @@ import { Sparkles, Send, User, Bot, Loader2, MessageSquare, Plus, Settings, X, S
 import { cn } from '@/shared/utils';
 import { AIModelSelector } from '@/shared/ui/components/AIModelSelector';
 import { AI_CONFIG } from '@/shared/config/ai';
+import { MarkdownRenderer } from '@/features/editor/MarkdownRenderer';
 
 type Message = {
   id: string;
@@ -27,7 +28,7 @@ export default function AIPage() {
     {
       id: 'default',
       title: 'Новий чат',
-      messages: [{ id: 'initial', role: 'assistant', text: `Привіт, ${currentUser?.name || 'користувачу'}! Я ваш AI-асистент. ${currentUser?.role === 'ADMIN' ? 'Як адміністратор, ви маєте повний доступ. Чим можу допомогти?' : 'Чим можу допомогти сьогодні?'}` }]
+      messages: [{ id: 'initial', role: 'assistant', text: `Привіт, ${currentUser?.name || 'користувачу'}! Я ваш AI-асистент на базі Cloudflare Workers AI. Чим можу допомогти з навчанням чи аналізом матеріалів?` }]
     }
   ]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('default');
@@ -42,10 +43,77 @@ export default function AIPage() {
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
+  const initializedFromUrl = useRef(false);
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Read URL params if redirected from selection assistant or lesson
+  useEffect(() => {
+    if (typeof window === 'undefined' || initializedFromUrl.current) return;
+    initializedFromUrl.current = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const initialPrompt = params.get('prompt');
+    const initialContext = params.get('context') || params.get('title');
+
+    if (initialPrompt) {
+      const newSessionId = `context-${Date.now()}`;
+      const title = initialContext ? `Контекст: ${initialContext.slice(0, 24)}` : initialPrompt.slice(0, 24);
+      
+      const userMsg: Message = { id: `u-${Date.now()}`, role: 'user', text: initialPrompt };
+      
+      setSessions(prev => [
+        {
+          id: newSessionId,
+          title,
+          messages: [
+            { id: `init-${Date.now()}`, role: 'assistant', text: `Вітаю! Я відкрив контекст для **${initialContext || 'виділеного фрагмента'}**. Аналізую запит за допомогою **${selectedModel}**...` },
+            userMsg
+          ]
+        },
+        ...prev
+      ]);
+      setCurrentSessionId(newSessionId);
+
+      // Auto-trigger response
+      setIsLoading(true);
+      fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', text: initialPrompt }],
+          userRole: currentUser?.role || 'GUEST',
+          model: selectedModel
+        })
+      })
+        .then(res => res.json())
+        .then(data => {
+          setSessions(prev => prev.map(s => {
+            if (s.id === newSessionId) {
+              return {
+                ...s,
+                messages: [...s.messages, { id: `resp-${Date.now()}`, role: 'assistant', text: data.text || 'Відповідь отримана.' }]
+              };
+            }
+            return s;
+          }));
+        })
+        .catch(err => {
+          setSessions(prev => prev.map(s => {
+            if (s.id === newSessionId) {
+              return {
+                ...s,
+                messages: [...s.messages, { id: `err-${Date.now()}`, role: 'assistant', text: `Помилка: ${err.message}` }]
+              };
+            }
+            return s;
+          }));
+        })
+        .finally(() => setIsLoading(false));
+    }
+  }, [selectedModel, currentUser?.role]);
 
   const updateSessionMessages = (id: string, newMessages: Message[] | ((prev: Message[]) => Message[])) => {
     setSessions(prev => prev.map(s => {
@@ -211,7 +279,13 @@ export default function AIPage() {
                   ? "bg-stone-100 text-stone-900 rounded-tr-sm" 
                   : "bg-white border border-stone-200 text-stone-800 rounded-tl-sm shadow-sm"
               )}>
-                <div className="whitespace-pre-wrap">{msg.text}</div>
+                {msg.role === 'user' ? (
+                  <div className="whitespace-pre-wrap">{msg.text}</div>
+                ) : (
+                  <div className="prose prose-stone max-w-none text-stone-800">
+                    <MarkdownRenderer content={msg.text} />
+                  </div>
+                )}
               </div>
             </div>
           ))}
