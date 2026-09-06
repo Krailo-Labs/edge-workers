@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from '@/data/mock/auth';
 import { Button } from '@/shared/ui/components';
-import { Sparkles, Send, User, Bot, Loader2, MessageSquare, Plus, Settings, X, Square } from 'lucide-react';
+import { Sparkles, Send, User, Bot, Loader2, MessageSquare, Plus, Settings, X, Square, Trash2 } from 'lucide-react';
 import { cn } from '@/shared/utils';
 import { AIModelSelector } from '@/shared/ui/components/AIModelSelector';
 import { AI_CONFIG } from '@/shared/config/ai';
@@ -19,7 +19,10 @@ type ChatSession = {
   id: string;
   title: string;
   messages: Message[];
+  updatedAt?: number;
 };
+
+const STORAGE_KEY = 'infohub_ai_chat_sessions_v2';
 
 export default function AIPage() {
   const { currentUser } = useAuth();
@@ -28,13 +31,64 @@ export default function AIPage() {
     {
       id: 'default',
       title: 'Новий чат',
-      messages: [{ id: 'initial', role: 'assistant', text: `Привіт, ${currentUser?.name || 'користувачу'}! Я ваш AI-асистент на базі Cloudflare Workers AI. Чим можу допомогти з навчанням чи аналізом матеріалів?` }]
+      messages: [{ id: 'initial', role: 'assistant', text: `Привіт, ${currentUser?.name || 'користувачу'}! Я ваш AI-асистент на базі Cloudflare Workers AI. Чим можу допомогти з навчанням чи аналізом матеріалів?` }],
+      updatedAt: Date.now()
     }
   ]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('default');
+  const [isStorageLoaded, setIsStorageLoaded] = useState(false);
+
+  // Load chats from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSessions(parsed);
+          setCurrentSessionId(parsed[0].id);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsStorageLoaded(true);
+    }
+  }, []);
+
+  // Save chats to localStorage on changes
+  useEffect(() => {
+    if (!isStorageLoaded) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+    } catch {
+      // ignore
+    }
+  }, [sessions, isStorageLoaded]);
 
   const currentSession = sessions.find(s => s.id === currentSessionId) || sessions[0];
-  const messages = currentSession.messages;
+  const messages = useMemo(() => currentSession ? currentSession.messages : [], [currentSession]);
+
+  const deleteSession = (e: React.MouseEvent, idToDelete: string) => {
+    e.stopPropagation();
+    setSessions(prev => {
+      const filtered = prev.filter(s => s.id !== idToDelete);
+      if (filtered.length === 0) {
+        const fresh: ChatSession[] = [{
+          id: `chat-${Date.now()}`,
+          title: 'Новий чат',
+          messages: [{ id: 'initial', role: 'assistant', text: `Привіт! Я ваш AI-асистент. Чим можу допомогти?` }],
+          updatedAt: Date.now()
+        }];
+        setCurrentSessionId(fresh[0].id);
+        return fresh;
+      }
+      if (currentSessionId === idToDelete) {
+        setCurrentSessionId(filtered[0].id);
+      }
+      return filtered;
+    });
+  };
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -215,19 +269,29 @@ export default function AIPage() {
         <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-2 px-1">Історія діалогів</div>
         <div className="flex-1 overflow-y-auto overscroll-contain space-y-1 pr-1">
           {sessions.map((session) => (
-            <button 
+            <div 
               key={session.id} 
-              onClick={() => { setCurrentSessionId(session.id); setShowHistory(false); }}
               className={cn(
-                "w-full text-left px-3 py-2 rounded-xl text-xs font-medium truncate flex items-center gap-2 transition-colors",
+                "group w-full text-left px-3 py-2 rounded-xl text-xs font-medium flex items-center justify-between gap-2 transition-colors cursor-pointer",
                 currentSessionId === session.id 
                   ? "bg-purple-100 text-purple-900 font-semibold" 
                   : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
               )}
+              onClick={() => { setCurrentSessionId(session.id); setShowHistory(false); }}
             >
-              <MessageSquare className="w-3.5 h-3.5 shrink-0 text-purple-600" />
-              <span className="truncate">{session.title}</span>
-            </button>
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <MessageSquare className="w-3.5 h-3.5 shrink-0 text-purple-600" />
+                <span className="truncate">{session.title}</span>
+              </div>
+              <button
+                onClick={(e) => deleteSession(e, session.id)}
+                className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-600 text-stone-400 rounded transition-opacity"
+                title="Видалити діалог"
+                aria-label="Видалити діалог"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           ))}
         </div>
       </div>
@@ -311,8 +375,8 @@ export default function AIPage() {
           <div ref={endOfMessagesRef} />
         </div>
 
-        {/* Fixed Input Form - stays pinned at the bottom, never scrolls away or overlaps header */}
-        <div className="shrink-0 bg-white/95 backdrop-blur-md border-t border-stone-200/90 px-3 sm:px-6 py-2.5 sm:py-3 z-10 relative">
+        {/* Fixed Input Form - strictly pinned at the bottom, zero unnecessary gaps */}
+        <div className="shrink-0 bg-white border-t border-stone-200/90 px-3 sm:px-6 py-2 sm:py-2.5 z-10 relative">
           {isLoading && (
             <div className="absolute -top-9 left-1/2 -translate-x-1/2">
               <Button onClick={stopGeneration} variant="secondary" size="sm" className="gap-1.5 rounded-full shadow-md text-[11px] border-stone-300 py-1 px-3 bg-white">
@@ -329,22 +393,19 @@ export default function AIPage() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={isLoading ? 'Очікування відповіді...' : `Запитати ${AI_CONFIG.models.find(m=>m.id===selectedModel)?.name}...`}
+              placeholder={isLoading ? 'Очікування відповіді...' : `Запитати ${AI_CONFIG.models.find(m=>m.id===selectedModel)?.name || 'AI'}...`}
               disabled={isLoading}
-              className="w-full bg-stone-50 border border-stone-200 rounded-xl py-2.5 sm:py-3 pl-3.5 pr-12 text-xs sm:text-sm focus:outline-none focus:border-purple-400 focus:bg-white focus:ring-3 focus:ring-purple-100 transition-all shadow-2xs disabled:opacity-50"
+              className="w-full bg-stone-50 border border-stone-200 rounded-xl py-2 sm:py-2.5 pl-3.5 pr-11 text-xs sm:text-sm focus:outline-none focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-100 transition-all shadow-2xs disabled:opacity-50"
             />
             <Button 
               type="submit"
               disabled={!input.trim() || isLoading}
               size="sm"
-              className="absolute right-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg w-8 h-8 sm:w-9 sm:h-9 p-0 flex items-center justify-center shadow-xs disabled:bg-stone-200 disabled:text-stone-400 transition-colors"
+              className="absolute right-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg w-7 h-7 sm:w-8 sm:h-8 p-0 flex items-center justify-center shadow-xs disabled:bg-stone-200 disabled:text-stone-400 transition-colors"
             >
-              <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Send className="w-3.5 h-3.5" />
             </Button>
           </form>
-          <div className="text-center mt-1.5 text-[10px] text-stone-400">
-            Cloudflare Workers AI • Llama 3
-          </div>
         </div>
       </div>
     </div>

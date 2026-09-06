@@ -28,7 +28,7 @@ export function normalizeMarkdown(text: string): string {
   normalized = normalized.replace(/([^\n])\s+(\d+\.\s+[A-ZА-ЯІЇЄ])/g, '$1\n\n$2');
 
   // Split bullet points stuck on single line: "text • **Title**" or "text - **Title**"
-  normalized = normalized.replace(/([^\n])\s+([•\-]\s+\*\*)/g, '$1\n\n* **$2');
+  normalized = normalized.replace(/([^\n])\s+[•\-]\s+(\*\*[^*]+\*\*)/g, '$1\n\n* $2');
 
   // Ensure headings have space after hashes if missing: "##Title" -> "## Title"
   normalized = normalized.replace(/^(#{1,6})([^\s#])/gm, '$1 $2');
@@ -189,7 +189,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
               <img 
                 src={src} 
                 alt={alt || 'Зображення'} 
-                className="w-full max-h-[460px] object-cover rounded-2xl border border-stone-200 shadow-xs" 
+                className="w-full max-h-[500px] object-contain rounded-2xl border border-stone-200 bg-white shadow-2xs mx-auto" 
                 loading="lazy" 
                 {...props} 
               />

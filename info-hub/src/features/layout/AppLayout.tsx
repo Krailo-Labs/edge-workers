@@ -54,8 +54,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </Suspense>
       
       <div className="flex-1 flex flex-col min-h-screen max-w-full w-full relative">
-        {/* Мобільний фіксований хедер */}
-        <header className="md:hidden flex items-center justify-between px-4 h-14 bg-white/95 backdrop-blur-md border-b border-stone-200/90 shrink-0 sticky top-0 z-40 shadow-2xs">
+        {/* Мобільний фіксований хедер - залізобетонна фіксація */}
+        <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white/95 backdrop-blur-md border-b border-stone-200/90 z-40 flex items-center justify-between px-4 shadow-2xs">
           <Link href="/" className="flex items-center gap-2" onClick={() => setIsOpen(false)}>
             <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white font-bold shadow-xs">iH</div>
             <span className="font-semibold text-lg tracking-tight text-stone-800">InfoHub</span>
@@ -82,7 +82,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         
-        <main className="flex-1 flex flex-col w-full max-w-full">
+        <main className="flex-1 flex flex-col w-full max-w-full pt-14 md:pt-0">
           {children}
         </main>
       </div>

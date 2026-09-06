@@ -6,31 +6,33 @@ import { cn } from '@/shared/utils';
 import { 
   Home, Plus, Inbox, FileText, LayoutTemplate, 
   GraduationCap, Library, BookOpen, MessageSquare, 
-  ShieldAlert, Sparkles, Search, X, Lock, UserCheck, ChevronDown
+  ShieldAlert, Sparkles, Search, X, Lock, StickyNote, BookCheck, LogOut, KeyRound, UploadCloud
 } from 'lucide-react';
 import { Button } from '@/shared/ui/components';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/data/mock/auth';
-import { PRESET_USERS, UserRole } from '@/shared/config/permissions';
 
 const mainNav = [
   { title: 'Головна', icon: Home, href: '/' },
   { title: 'Вхідні', icon: Inbox, href: '/inbox' },
+  { title: 'Нотатки', icon: StickyNote, href: '/notes' },
   { title: 'Матеріали', icon: LayoutTemplate, href: '/content?type=MATERIAL' },
   { title: 'Статті', icon: FileText, href: '/content?type=ARTICLE' },
   { title: 'Уроки', icon: GraduationCap, href: '/content?type=LESSON' },
   { title: 'Курси', icon: BookOpen, href: '/content?type=COURSE' },
   { title: 'Теми', icon: Library, href: '/topics' },
+  { title: 'AI Помічник', icon: Sparkles, href: '/ai' },
+  { title: 'Імпорт', icon: UploadCloud, href: '/import' },
+  { title: 'Права & Admin', icon: ShieldAlert, href: '/admin' },
 ];
 
 export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () => void }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
-  const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
   const [lockedNotice, setLockedNotice] = useState<string | null>(null);
 
-  const { currentUser, setUserByRole, checkNavAccess } = useAuth();
+  const { currentUser, isAdmin, setAdmin, checkNavAccess } = useAuth();
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -139,115 +141,57 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
             );
           })}
           
-          <div className="mt-6 mb-2 px-3">
-            <p className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">Інструменти</p>
-          </div>
-          
-          {checkNavAccess('/ai') !== 'HIDDEN' && (
-            <Link 
-              href="/ai" 
-              onClick={(e) => handleNavClick(e, checkNavAccess('/ai'), 'AI Помічник')}
-              className={cn(
-                "flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-100 transition-colors group",
-                checkNavAccess('/ai') === 'BLURRED' && "opacity-60 cursor-not-allowed"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <Sparkles className="w-4 h-4 text-purple-500" />
-                <span className={cn(checkNavAccess('/ai') === 'BLURRED' && "blur-[1px]")}>AI Помічник</span>
-              </div>
-              {checkNavAccess('/ai') === 'BLURRED' && <Lock className="w-3.5 h-3.5 text-stone-400" />}
-            </Link>
-          )}
-
-          {checkNavAccess('/import') !== 'HIDDEN' && (
-            <Link 
-              href="/import" 
-              onClick={(e) => handleNavClick(e, checkNavAccess('/import'), 'Імпорт пакетів')}
-              className={cn(
-                "flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-100 transition-colors group",
-                checkNavAccess('/import') === 'BLURRED' && "opacity-60 cursor-not-allowed"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <Inbox className="w-4 h-4 text-stone-400 group-hover:text-stone-600" />
-                <span className={cn(checkNavAccess('/import') === 'BLURRED' && "blur-[1px]")}>Імпорт пакетів</span>
-              </div>
-              {checkNavAccess('/import') === 'BLURRED' && <Lock className="w-3.5 h-3.5 text-stone-400" />}
-            </Link>
-          )}
         </nav>
 
-        {/* Footer & Role Switcher */}
+        {/* Footer & User Status */}
         <div className="p-3 border-t border-stone-200 space-y-2 bg-[#FAFAFA]">
+          <Link href="/docs" onClick={onClose} className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-100 transition-colors">
+            <BookCheck className="w-4 h-4 text-emerald-600" />
+            <span>Довідка & Інструкція</span>
+          </Link>
+
           <Link href="/feedback" onClick={onClose} className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-100 transition-colors">
             <MessageSquare className="w-4 h-4 text-stone-400" />
-            Допомогти покращити
+            <span>Зворотний зв&apos;язок</span>
           </Link>
           
-          {checkNavAccess('/admin') !== 'HIDDEN' && (
-            <Link 
-              href="/admin" 
-              onClick={(e) => handleNavClick(e, checkNavAccess('/admin'), 'Admin & Права')}
-              className={cn(
-                "flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-100 transition-colors",
-                checkNavAccess('/admin') === 'BLURRED' && "opacity-60 cursor-not-allowed"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <ShieldAlert className="w-4 h-4 text-stone-500" />
-                <span>Admin & Права</span>
-              </div>
-              {checkNavAccess('/admin') === 'BLURRED' && <Lock className="w-3.5 h-3.5 text-stone-400" />}
-            </Link>
-          )}
-
-          {/* User Account / Role Switcher Card */}
-          <div className="relative pt-2 border-t border-stone-200">
-            <button
-              onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
-              className="w-full flex items-center justify-between p-2 rounded-xl bg-white border border-stone-200 hover:border-stone-300 transition-all text-left shadow-2xs"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-stone-800 text-white flex items-center justify-center font-bold text-xs shrink-0">
-                  {currentUser.avatarText || 'U'}
+          <div className="pt-2 border-t border-stone-200">
+            {isAdmin ? (
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-stone-900 text-white shadow-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500 text-stone-950 flex items-center justify-center font-bold text-xs shrink-0">
+                    A
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold truncate">Адміністратор</div>
+                    <div className="text-[10px] text-emerald-400">Повний доступ</div>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-stone-900 truncate">{currentUser.name}</div>
-                  <div className="text-[10px] text-stone-500 capitalize">{currentUser.role.toLowerCase()}</div>
-                </div>
+                <button
+                  onClick={() => setAdmin(false)}
+                  title="Вийти з режиму адміністратора"
+                  className="p-1.5 hover:bg-stone-800 text-stone-400 hover:text-white rounded-lg transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
               </div>
-              <ChevronDown className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-            </button>
-
-            {/* Quick Switch Dropdown */}
-            {showRoleSwitcher && (
-              <div className="absolute bottom-full left-0 right-0 mb-2 bg-white rounded-2xl shadow-xl border border-stone-200 p-2 z-50 space-y-1 animate-in fade-in zoom-in-95">
-                <div className="px-2 py-1 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                  Швидка зміна ролі
+            ) : (
+              <Link
+                href="/admin"
+                onClick={onClose}
+                className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-stone-200 hover:border-stone-300 transition-all text-left shadow-2xs group"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-stone-100 text-stone-600 group-hover:bg-stone-900 group-hover:text-white flex items-center justify-center font-bold text-xs shrink-0 transition-colors">
+                    <KeyRound className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-stone-900 truncate">Адмін Панель</div>
+                    <div className="text-[10px] text-stone-400">Вхід за паролем</div>
+                  </div>
                 </div>
-                {PRESET_USERS.map(u => (
-                  <button
-                    key={u.id}
-                    onClick={() => {
-                      setUserByRole(u.role);
-                      setShowRoleSwitcher(false);
-                    }}
-                    className={cn(
-                      "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors text-left",
-                      currentUser.role === u.role ? "bg-emerald-50 text-emerald-800 font-bold" : "text-stone-700 hover:bg-stone-100"
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded bg-stone-200 text-stone-700 flex items-center justify-center text-[10px] font-bold">
-                        {u.avatarText}
-                      </span>
-                      <span>{u.name}</span>
-                    </div>
-                    {currentUser.role === u.role && <UserCheck className="w-3.5 h-3.5 text-emerald-600" />}
-                  </button>
-                ))}
-              </div>
+                <Lock className="w-3.5 h-3.5 text-stone-400 group-hover:text-stone-700 transition-colors" />
+              </Link>
             )}
           </div>
         </div>

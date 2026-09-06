@@ -1,6 +1,7 @@
 export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getCloudflareAI } from '@/shared/utils/cloudflare-bindings';
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,12 +12,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Text or prompt is required" }, { status: 400 });
     }
 
-    const ai = process.env.AI as any;
+    const ai = getCloudflareAI();
     
-    if (!ai) {
+    if (!ai || typeof ai.run !== 'function') {
       return NextResponse.json({ 
         error: "Cloudflare AI binding not found", 
-        info: "Make sure [ai] binding='AI' is in wrangler.toml" 
+        info: "Make sure [ai] binding='AI' is in wrangler.toml or Cloudflare Dashboard" 
       }, { status: 500 });
     }
 
@@ -46,10 +47,13 @@ export async function POST(req: NextRequest) {
 
     // Call Cloudflare Llama 3
     const response = await ai.run('@cf/meta/llama-3.1-8b-instruct-fp8', {
-      messages
+      messages,
+      max_tokens: 3000,
+      temperature: 0.5
     });
 
-    return NextResponse.json({ text: response.response });
+    const responseText = response?.response || response?.text || (typeof response === 'string' ? response : 'Не вдалося згенерувати відповідь');
+    return NextResponse.json({ text: responseText });
   } catch (error: any) {
     console.error("Cloudflare AI error:", error);
     return NextResponse.json({ error: "AI generation failed: " + error.message }, { status: 500 });

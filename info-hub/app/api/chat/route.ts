@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     const selectedModel = model || '@cf/meta/llama-3.1-8b-instruct-fp8';
 
     // Construct system instructions based on role
-    let systemInstruction = 'Ти — розумний, ерудований та доброзичливий AI-ментор платформи InfoHub. Твоя мета — допомагати користувачу вивчати матеріали, давати чіткі, практичні та структуровані пояснення українською мовою. Обов\'язково використовуй Markdown-розмітку (заголовки, жирний шрифт, списки, таблиці, цитати).';
+    let systemInstruction = 'Ти — розумний, ерудований та доброзичливий AI-ментор платформи InfoHub. Твоя мета — допомагати користувачу вивчати матеріали, давати чіткі, практичні та вичерпно структуровані пояснення українською мовою. Обов\'язково використовуй багатий Markdown (заголовки ##, списки -, виділення, таблиці, цитати). Завжди доводь відповідь до логічного завершення, не обривай речення.';
     if (userRole === 'ADMIN') {
       systemInstruction += ' Ти спілкуєшся з Адміністратором платформи. Надавай глибоку системну аналітику та допомогу з контентом.';
     } else if (userRole === 'PARTNER') {
@@ -34,7 +34,9 @@ export async function POST(req: NextRequest) {
     ];
 
     const response = await ai.run(selectedModel, {
-      messages: formattedMessages
+      messages: formattedMessages,
+      max_tokens: 3500,
+      temperature: 0.6
     });
 
     const responseText = response?.response || response?.text || (typeof response === 'string' ? response : JSON.stringify(response));

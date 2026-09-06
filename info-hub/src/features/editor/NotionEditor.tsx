@@ -11,7 +11,8 @@ import {
   Heading1, Heading2, Heading3, Quote, Code, 
   Smile, Table, Minus, HelpCircle, Lock, Globe, X,
   ArrowLeft, Check, Wand2, Lightbulb, AlertTriangle, Pin, Rocket,
-  FileText, GraduationCap, BookOpen, LayoutTemplate, Image as ImageIcon, Link as LinkIcon, RemoveFormatting
+  FileText, GraduationCap, BookOpen, LayoutTemplate, Image as ImageIcon, Link as LinkIcon, RemoveFormatting,
+  Upload, Eye
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/shared/utils';
@@ -37,7 +38,11 @@ export function NotionEditor({ initialId, isEditMode = false }: NotionEditorProp
   const [isSaving, setIsSaving] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
+  const [imageModalTab, setImageModalTab] = useState<'upload' | 'url' | 'presets'>('upload');
   const [imageUrlInput, setImageUrlInput] = useState('');
+  const [imageCaptionInput, setImageCaptionInput] = useState('');
+  const [uploadedPreview, setUploadedPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Selection and AI
   const [selectedText, setSelectedText] = useState('');
@@ -69,6 +74,19 @@ export function NotionEditor({ initialId, isEditMode = false }: NotionEditorProp
             if (b.type === 'quote') return `<blockquote>${b.content?.text || ''}</blockquote>`;
             if (b.type === 'code') return `<pre class="bg-stone-900 text-stone-100 p-4 rounded-xl my-3 font-mono text-sm"><code>${b.content?.code || b.content?.text || ''}</code></pre>`;
             if (b.type === 'divider') return `<hr class="my-6 border-stone-200" />`;
+            if (b.type === 'image') {
+              const src = b.content?.url || b.content?.src || '';
+              const cap = b.content?.caption || '';
+              return `<figure class="my-4"><img src="${src}" alt="${cap}" class="rounded-2xl max-w-full h-auto shadow-xs border border-stone-200" />${cap ? `<figcaption class="text-xs text-stone-500 mt-1 italic">${cap}</figcaption>` : ''}</figure>`;
+            }
+            if (b.type === 'table') {
+              if (b.content?.html) return b.content.html;
+              if (b.content?.headers || b.content?.rows) {
+                const headers = b.content.headers || [];
+                const rows = b.content.rows || [];
+                return `<table style="width: 100%; border-collapse: collapse; margin: 16px 0; border: 1px solid #e7e5e4;"><thead><tr style="background-color: #f5f5f4;">${headers.map((h: string) => `<th style="border: 1px solid #e7e5e4; padding: 8px 12px; font-weight: 600;">${h}</th>`).join('')}</tr></thead><tbody>${rows.map((r: string[]) => `<tr>${r.map((c: string) => `<td style="border: 1px solid #e7e5e4; padding: 8px 12px;">${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+              }
+            }
             return `<p>${b.content?.text || ''}</p>`;
           }).join('');
           editorRef.current.innerHTML = html || '<p><br></p>';
@@ -347,6 +365,8 @@ function example() {
       purpose: purpose,
       visibility: visibility,
       topicIds: autoTopics,
+      authorId: existing?.authorId || currentUser.id,
+      authorName: existing?.authorName || currentUser.name,
       blocks: blocks,
       modules: existing?.modules,
       relations: existing?.relations || [],
@@ -734,43 +754,242 @@ function example() {
         </div>
       )}
 
-      {/* Custom Image Modal */}
+      {/* Custom Image Modal with Upload, URL, Presets & Captions */}
       {showImageModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl border border-stone-200 shadow-2xl p-5 sm:p-6 max-w-md w-full space-y-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-stone-900 text-sm sm:text-base">Вставити зображення</h3>
-              <button onClick={() => setShowImageModal(false)} className="p-1 text-stone-400 hover:text-stone-700 rounded-lg">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl border border-stone-200 shadow-2xl p-5 sm:p-6 max-w-lg w-full space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-2 border-b border-stone-100">
+              <div className="flex items-center gap-2 text-stone-900 font-bold text-sm sm:text-base">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <ImageIcon className="w-4 h-4" />
+                </div>
+                <span>Вставити зображення або діаграму</span>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowImageModal(false);
+                  setUploadedPreview(null);
+                }} 
+                className="p-1 text-stone-400 hover:text-stone-700 rounded-lg"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Tab selection */}
+            <div className="flex p-1 bg-stone-100 rounded-xl gap-1">
+              <button
+                type="button"
+                onClick={() => setImageModalTab('upload')}
+                className={cn(
+                  "flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5",
+                  imageModalTab === 'upload' ? "bg-white text-stone-900 shadow-2xs" : "text-stone-500 hover:text-stone-800"
+                )}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Завантажити файл</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setImageModalTab('url')}
+                className={cn(
+                  "flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5",
+                  imageModalTab === 'url' ? "bg-white text-stone-900 shadow-2xs" : "text-stone-500 hover:text-stone-800"
+                )}
+              >
+                <LinkIcon className="w-3.5 h-3.5" />
+                <span>За посиланням</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setImageModalTab('presets')}
+                className={cn(
+                  "flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5",
+                  imageModalTab === 'presets' ? "bg-white text-stone-900 shadow-2xs" : "text-stone-500 hover:text-stone-800"
+                )}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>Зразки</span>
+              </button>
+            </div>
             
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-stone-600">URL адреса зображення</label>
+            {/* Tab 1: Upload File */}
+            {imageModalTab === 'upload' && (
+              <div className="space-y-3">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml" 
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        const result = event.target?.result as string;
+                        setUploadedPreview(result);
+                        setImageUrlInput(result);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+
+                {uploadedPreview ? (
+                  <div className="relative rounded-2xl border border-stone-200 bg-stone-50 p-2 overflow-hidden group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={uploadedPreview} alt="Preview" className="w-full max-h-48 object-contain rounded-xl bg-white" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadedPreview(null);
+                        setImageUrlInput('');
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      className="absolute top-3 right-3 p-1.5 bg-stone-900/80 hover:bg-stone-900 text-white rounded-lg text-xs"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const file = e.dataTransfer.files?.[0];
+                      if (file && file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          const result = event.target?.result as string;
+                          setUploadedPreview(result);
+                          setImageUrlInput(result);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    className="border-2 border-dashed border-stone-200 hover:border-emerald-500 bg-stone-50 hover:bg-emerald-50/20 rounded-2xl p-6 text-center cursor-pointer transition-colors space-y-2"
+                  >
+                    <div className="w-10 h-10 rounded-2xl bg-white text-emerald-600 shadow-2xs border border-stone-100 flex items-center justify-center mx-auto">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                    <div className="text-xs font-semibold text-stone-800">
+                      Натисніть для вибору або перетягніть файл
+                    </div>
+                    <div className="text-[11px] text-stone-400">
+                      Підтримуються PNG, JPG, WebP, SVG (до 10 MB)
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2: URL */}
+            {imageModalTab === 'url' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">URL адреса зображення</label>
+                  <input 
+                    type="text"
+                    value={imageUrlInput}
+                    onChange={(e) => {
+                      setImageUrlInput(e.target.value);
+                      setUploadedPreview(null);
+                    }}
+                    placeholder="https://example.com/diagram.png"
+                    className="w-full px-3 py-2 text-xs border border-stone-200 rounded-xl outline-none focus:border-emerald-500 bg-stone-50 focus:bg-white transition-all font-mono"
+                  />
+                </div>
+                {imageUrlInput && (
+                  <div className="rounded-xl border border-stone-200 bg-stone-50 p-2 overflow-hidden max-h-36 flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imageUrlInput} alt="Preview" className="max-h-32 object-contain rounded-lg" onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 3: Presets */}
+            {imageModalTab === 'presets' && (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-stone-700 block">Оберіть приклад або діаграму:</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { title: 'Графік аналітики', url: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&auto=format&fit=crop&q=80' },
+                    { title: 'Структура знань', url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800&auto=format&fit=crop&q=80' },
+                    { title: 'Командна робота', url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&auto=format&fit=crop&q=80' },
+                    { title: 'Навчальний процес', url: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800&auto=format&fit=crop&q=80' }
+                  ].map((preset, pIdx) => (
+                    <button
+                      key={pIdx}
+                      type="button"
+                      onClick={() => {
+                        setImageUrlInput(preset.url);
+                        setImageCaptionInput(preset.title);
+                        setUploadedPreview(preset.url);
+                      }}
+                      className={cn(
+                        "p-2.5 rounded-xl border text-left text-xs transition-all flex flex-col gap-1.5",
+                        imageUrlInput === preset.url ? "border-emerald-500 bg-emerald-50/50 text-emerald-900 font-bold" : "border-stone-200 hover:bg-stone-50 text-stone-700"
+                      )}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={preset.url} alt={preset.title} className="w-full h-16 object-cover rounded-lg" />
+                      <span className="truncate">{preset.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Caption Input */}
+            <div>
+              <label className="text-xs font-semibold text-stone-700 block mb-1">Підпис до зображення (необовʼязково)</label>
               <input 
                 type="text"
-                value={imageUrlInput}
-                onChange={(e) => setImageUrlInput(e.target.value)}
-                placeholder="https://example.com/image.jpg"
-                className="w-full px-3 py-2 text-xs border border-stone-200 rounded-xl outline-none focus:border-stone-400"
+                value={imageCaptionInput}
+                onChange={(e) => setImageCaptionInput(e.target.value)}
+                placeholder="Наприклад: Схема взаємодії компонентів"
+                className="w-full px-3 py-2 text-xs border border-stone-200 rounded-xl outline-none focus:border-emerald-500 bg-stone-50 focus:bg-white transition-all"
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="secondary" size="sm" onClick={() => setShowImageModal(false)} className="text-xs rounded-xl">
+            <div className="flex justify-end gap-2 pt-2 border-t border-stone-100">
+              <Button 
+                variant="secondary" 
+                size="sm" 
+                onClick={() => {
+                  setShowImageModal(false);
+                  setUploadedPreview(null);
+                }} 
+                className="text-xs rounded-xl"
+              >
                 Скасувати
               </Button>
               <Button 
                 size="sm" 
+                disabled={!imageUrlInput.trim()}
                 onClick={() => {
-                  if (imageUrlInput.trim()) {
-                    applyFormat('insertHTML', `<div class="my-4"><img src="${imageUrlInput.trim()}" alt="Зображення" class="rounded-2xl max-w-full h-auto shadow-xs border border-stone-200" /><p><br></p></div>`);
+                  const finalUrl = imageUrlInput.trim();
+                  if (finalUrl) {
+                    const caption = imageCaptionInput.trim();
+                    const figureHtml = `
+                      <figure class="my-5" style="text-align: center;">
+                        <img src="${finalUrl}" alt="${caption || 'Зображення'}" style="max-width: 100%; height: auto; border-radius: 16px; border: 1px solid #e7e5e4; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin: 0 auto; display: block;" />
+                        ${caption ? `<figcaption style="text-align: center; font-size: 12px; color: #78716c; margin-top: 6px; font-style: italic;">${caption}</figcaption>` : ''}
+                      </figure>
+                      <p><br></p>
+                    `;
+                    applyFormat('insertHTML', figureHtml);
                   }
                   setShowImageModal(false);
+                  setImageUrlInput('');
+                  setImageCaptionInput('');
+                  setUploadedPreview(null);
                 }} 
-                className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl"
+                className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-semibold shadow-xs"
               >
-                Вставити
+                Вставити зображення
               </Button>
             </div>
           </div>

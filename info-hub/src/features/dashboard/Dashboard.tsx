@@ -4,17 +4,24 @@ import { useState } from 'react';
 import { useContentRepo } from '@/data/mock/db';
 import { useAuth } from '@/data/mock/auth';
 import { Button } from '@/shared/ui/components';
-import { Plus, Sparkles, Lightbulb, AlertCircle, TrendingUp, Clock, Target, ArrowRight, Lock, EyeOff } from 'lucide-react';
+import { 
+  Plus, Sparkles, Lightbulb, AlertCircle, TrendingUp, Clock, 
+  Target, ArrowRight, Lock, EyeOff, FolderInput, Trash2, Edit3 
+} from 'lucide-react';
 import Link from 'next/link';
 import { KnowledgeGraph } from './KnowledgeGraph';
 import { TYPE_TRANSLATIONS, STATE_TRANSLATIONS } from '@/shared/utils/translations';
 import { cn } from '@/shared/utils';
+import { MoveContentModal, DeleteConfirmModal, checkCanManage } from '@/features/content/ContentActionsModal';
+import { ContentUnit } from '@/shared/types';
 
 export function Dashboard() {
-  const { getAll } = useContentRepo();
+  const { getAll, remove } = useContentRepo();
   const { canViewContent, currentUser } = useAuth();
   const content = getAll();
   const [isAnalysisExpanded, setIsAnalysisExpanded] = useState(false);
+  const [activeMoveItem, setActiveMoveItem] = useState<ContentUnit | null>(null);
+  const [activeDeleteItem, setActiveDeleteItem] = useState<ContentUnit | null>(null);
   
   const recentContent = content.slice(0, 6);
   
@@ -174,12 +181,54 @@ export function Dashboard() {
                     </div>
                  </Link>
                  
-                 <div className="flex items-center gap-4 sm:ml-auto shrink-0 pl-14 sm:pl-0">
+                 <div className="flex items-center gap-3 sm:ml-auto shrink-0 pl-14 sm:pl-0">
                     <div className="flex items-center gap-2">
                        <div className="w-16 h-2 bg-stone-100 rounded-full overflow-hidden">
                           <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${item.maturity}%` }} />
                        </div>
                        <span className="text-xs font-medium text-stone-500 w-8">{item.maturity}%</span>
+                    </div>
+
+                    {/* Quick Move & Delete Actions */}
+                    <div className="flex items-center gap-1 opacity-90 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Link
+                        href={`/edit/${item.id}`}
+                        className="p-1.5 text-stone-400 hover:text-stone-800 hover:bg-stone-100 rounded-lg transition-colors"
+                        title="Редагувати"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </Link>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveMoveItem(item);
+                        }}
+                        className="p-1.5 text-stone-400 hover:text-emerald-700 hover:bg-stone-100 rounded-lg transition-colors"
+                        title="Перемістити / Змінити розділ"
+                      >
+                        <FolderInput className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveDeleteItem(item);
+                        }}
+                        className={cn(
+                          "p-1.5 rounded-lg transition-colors",
+                          checkCanManage(item, currentUser.id, currentUser.role).allowed
+                            ? "text-stone-400 hover:text-red-600 hover:bg-red-50"
+                            : "text-stone-300 hover:text-stone-400 cursor-not-allowed"
+                        )}
+                        title={checkCanManage(item, currentUser.id, currentUser.role).allowed ? "Видалити" : "Видаляти може лише автор матеріалу"}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                  </div>
               </div>
@@ -192,6 +241,24 @@ export function Dashboard() {
       <section className="space-y-3">
          <KnowledgeGraph />
       </section>
+
+      {/* Modals for Move & Delete */}
+      {activeMoveItem && (
+        <MoveContentModal
+          item={activeMoveItem}
+          isOpen={!!activeMoveItem}
+          onClose={() => setActiveMoveItem(null)}
+        />
+      )}
+
+      {activeDeleteItem && (
+        <DeleteConfirmModal
+          item={activeDeleteItem}
+          isOpen={!!activeDeleteItem}
+          onClose={() => setActiveDeleteItem(null)}
+          onConfirm={() => remove(activeDeleteItem.id)}
+        />
+      )}
     </div>
   );
 }

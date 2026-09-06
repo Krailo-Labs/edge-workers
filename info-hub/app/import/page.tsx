@@ -4,7 +4,8 @@ import { useState, useRef } from 'react';
 import { Button, Card, Badge, Textarea, Input } from '@/shared/ui/components';
 import { 
   UploadCloud, CheckCircle2, AlertTriangle, ArrowRight, Sparkles, 
-  FileText, FolderArchive, BookOpen, Layers, Check, ChevronRight, Eye, Code, ArrowLeft, Image as ImageIcon
+  FileText, FolderArchive, BookOpen, Layers, Check, ChevronRight, Eye, Code, ArrowLeft, 
+  Image as ImageIcon, StickyNote, GraduationCap, LayoutTemplate, Zap
 } from 'lucide-react';
 import yaml from 'yaml';
 import JSZip from 'jszip';
@@ -45,17 +46,26 @@ interface ParsedCourseData {
   totalFiles: number;
 }
 
+const getUniqueId = (prefix: string) => {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+};
+
 export default function ImportPage() {
+  const [importMode, setImportMode] = useState<'standard' | 'smart'>('standard');
+  const [targetType, setTargetType] = useState<ContentType>('NOTE');
   const [step, setStep] = useState<1 | 2>(1);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string>('');
   const [rawText, setRawText] = useState('');
+  const [uploadedImageBase64, setUploadedImageBase64] = useState<string | null>(null);
+  const [uploadedImageName, setUploadedImageName] = useState<string | null>(null);
   const [parsedData, setParsedData] = useState<ParsedCourseData | null>(null);
   const [selectedModuleIdx, setSelectedModuleIdx] = useState<number>(0);
   const [selectedLessonIdx, setSelectedLessonIdx] = useState<number>(0);
   const [isDragging, setIsDragging] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const contentRepo = useContentRepo();
   const router = useRouter();
 
@@ -138,498 +148,227 @@ export default function ImportPage() {
         }
       }
 
-      // Module collection map
-      const moduleMap: Record<string, { title: string; lessons: ParsedLesson[] }> = {};
-      const rootLessons: ParsedLesson[] = [];
-      const materialsLessons: ParsedLesson[] = [];
+      setProcessingStatus(`Структуризація ${textFiles.length} файлів та ${Object.keys(imageMap).length} ассетів...`);
 
-      // Sort text files logically
-      textFiles.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+      // If we have text files, parse into structured course modules
+      if (textFiles.length > 0) {
+        // Group by folder/module
+        const moduleMap: Record<string, ParsedLesson[]> = {};
+        const standaloneLessons: ParsedLesson[] = [];
 
-      textFiles.forEach((fileItem, idx) => {
-        // Skip course.md from individual lessons if it's the root overview
-        if (fileItem.name.toLowerCase() === 'course.md' || fileItem.name.toLowerCase() === 'import_notes.md') {
-          return;
-        }
+        textFiles.forEach((f, idx) => {
+          if (f.name.toLowerCase() === 'course.md' || f.name.toLowerCase().startsWith('manifest.')) return;
 
-        // Parse lesson with structured parser
-        const parsed = parseStructuredLessonMarkdown(fileItem.content, imageMap, fileItem.name.replace(/\.md$/i, ''));
-        const uid = `${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+          const parsed = parseStructuredLessonMarkdown(f.content, imageMap, f.name.replace(/\.[^/.]+$/, ''));
+          const segments = f.path.split('/');
+          const folder = segments.length > 1 ? segments[segments.length - 2] : null;
 
-        const lesson: ParsedLesson = {
-          id: (parsed.id && !parsed.id.match(/^lesson-\d+$/)) ? parsed.id : `lesson-${uid}`,
-          title: parsed.title,
-          filename: fileItem.name,
-          module: parsed.module,
-          state: parsed.state || 'READY',
-          maturity: parsed.maturity || 90,
-          blocks: parsed.blocks
-        };
+          const lessonItem: ParsedLesson = {
+            id: parsed.id || `les-${Date.now()}-${idx}`,
+            title: parsed.title,
+            filename: f.name,
+            module: folder || parsed.module,
+            state: parsed.state || 'READY',
+            maturity: parsed.maturity || 90,
+            blocks: parsed.blocks
+          };
 
-        const parts = fileItem.path.split('/').filter(Boolean);
-        const folderName = parts.length > 1 ? parts[parts.length - 2] : '';
-
-        // Check if inside materials folder
-        if (fileItem.path.toLowerCase().includes('materials/')) {
-          materialsLessons.push(lesson);
-          return;
-        }
-
-        if (folderName && folderName !== 'INFOHUB_PACKAGE' && folderName !== 'materials') {
-          // Folder-based module: e.g. "module-01-foundation"
-          let cleanModuleTitle = folderName
-            .replace(/^module-\d+[-_.]\s*/i, '')
-            .replace(/[-_]/g, ' ');
-          cleanModuleTitle = cleanModuleTitle.charAt(0).toUpperCase() + cleanModuleTitle.slice(1);
-
-          // Extract module title prefix (e.g. Модуль 1: Foundation)
-          const modNumMatch = folderName.match(/module-(\d+)/i);
-          if (modNumMatch) {
-            const modNum = parseInt(modNumMatch[1], 10);
-            cleanModuleTitle = `Модуль ${modNum}: ${cleanModuleTitle}`;
+          if (folder) {
+            if (!moduleMap[folder]) moduleMap[folder] = [];
+            moduleMap[folder].push(lessonItem);
+          } else {
+            standaloneLessons.push(lessonItem);
           }
-
-          if (!moduleMap[folderName]) {
-            moduleMap[folderName] = { title: cleanModuleTitle, lessons: [] };
-          }
-          moduleMap[folderName].lessons.push(lesson);
-        } else if (parsed.module) {
-          // Metadata-based module
-          const modKey = parsed.module;
-          if (!moduleMap[modKey]) {
-            moduleMap[modKey] = {
-              title: modKey.replace(/[-_]/g, ' ').replace(/^module\s*\d+\s*/i, 'Модуль '),
-              lessons: []
-            };
-          }
-          moduleMap[modKey].lessons.push(lesson);
-        } else {
-          rootLessons.push(lesson);
-        }
-      });
-
-      const parsedModules: ParsedModule[] = [];
-
-      // Sort module folders by numeric key
-      const moduleKeys = Object.keys(moduleMap).sort((a, b) => {
-        const numA = parseInt(a.match(/\d+/)?.[0] || '999', 10);
-        const numB = parseInt(b.match(/\d+/)?.[0] || '999', 10);
-        return numA - numB;
-      });
-
-      moduleKeys.forEach((modKey, mIdx) => {
-        const mod = moduleMap[modKey];
-        // Sort lessons inside module
-        mod.lessons.sort((a, b) => {
-          const numA = parseInt(a.id.match(/\d+/)?.[0] || a.filename?.match(/\d+/)?.[0] || '999', 10);
-          const numB = parseInt(b.id.match(/\d+/)?.[0] || b.filename?.match(/\d+/)?.[0] || '999', 10);
-          return numA - numB;
         });
 
-        parsedModules.push({
-          id: `mod-${Date.now()}-${mIdx}`,
-          title: mod.title,
-          lessons: mod.lessons
-        });
-      });
+        // Build modules array
+        const modules: ParsedModule[] = [];
 
-      // Add materials as a separate module if exists
-      if (materialsLessons.length > 0) {
-        parsedModules.push({
-          id: `mod-materials-${Date.now()}`,
-          title: 'Додаткові матеріали та Словник',
-          description: 'Глосарій, чеклісти, конспекти та наукові джерела',
-          lessons: materialsLessons
-        });
-      }
-
-      // If there were root files and no folder modules
-      if (rootLessons.length > 0) {
-        if (parsedModules.length === 0) {
-          parsedModules.push({
-            id: `mod-${Date.now()}-1`,
-            title: 'Основна програма курсу',
-            lessons: rootLessons
+        Object.keys(moduleMap).forEach((modName, mIdx) => {
+          modules.push({
+            id: `mod-${mIdx + 1}`,
+            title: modName.replace(/^[0-9]+[-_]/, '').replace(/[-_]/g, ' '),
+            lessons: moduleMap[modName]
           });
-        } else {
-          parsedModules.unshift({
-            id: `mod-${Date.now()}-0`,
-            title: 'Вступні матеріали',
-            lessons: rootLessons
+        });
+
+        if (standaloneLessons.length > 0) {
+          modules.push({
+            id: `mod-main`,
+            title: modules.length > 0 ? 'Додаткові уроки та матеріали' : 'Основний навчальний модуль',
+            lessons: standaloneLessons
           });
         }
+
+        // Determine title & meta
+        const courseTitle = manifestData?.title || file.name.replace(/\.zip$/i, '').replace(/[-_]/g, ' ');
+        const courseDescription = manifestData?.description || (courseOverviewText ? courseOverviewText.slice(0, 300) : 'Навчальний курс імпортовано з пакету InfoHub.');
+        const topics = manifestData?.topics || ['Курси', 'Матеріали'];
+
+        setParsedData({
+          title: courseTitle,
+          type: 'COURSE',
+          purpose: 'TEACHING',
+          visibility: 'PUBLIC',
+          topics,
+          description: courseDescription,
+          modules,
+          totalFiles: textFiles.length
+        });
+
+        setSelectedModuleIdx(0);
+        setSelectedLessonIdx(0);
+        setStep(2);
+      } else {
+        alert('У ZIP-архіві не знайдено .md файлів.');
       }
-
-      // Course title derivation
-      let courseTitle = manifestData?.title || manifestData?.course?.title || '';
-      if (!courseTitle && courseOverviewText) {
-        const firstH1 = courseOverviewText.match(/^#\s+(.+)$/m);
-        if (firstH1) courseTitle = firstH1[1].trim();
-      }
-      if (!courseTitle) {
-        courseTitle = file.name.replace(/\.zip$/i, '').replace(/[-_]/g, ' ');
-      }
-      courseTitle = courseTitle.charAt(0).toUpperCase() + courseTitle.slice(1);
-
-      const topics = manifestData?.topics || manifestData?.topic || ['Курси', 'Трейдинг', 'Фінанси'];
-      if (!topics.includes('Курси')) topics.unshift('Курси');
-
-      const description = manifestData?.description || (courseOverviewText ? courseOverviewText.split('\n\n')[1]?.substring(0, 250) : `Комплексний навчальний курс "${courseTitle}" (${parsedModules.length} модулів, ${textFiles.length} матеріалів).`);
-
-      const result: ParsedCourseData = {
-        title: courseTitle,
-        type: (parsedModules.length > 0 && parsedModules.some(m => m.lessons.length > 0)) ? 'COURSE' : 'MATERIAL',
-        purpose: 'TEACHING',
-        visibility: 'PUBLIC',
-        topics: Array.isArray(topics) ? topics : [topics],
-        description,
-        modules: parsedModules,
-        totalFiles: textFiles.length
-      };
-
-      setParsedData(result);
-      setSelectedModuleIdx(0);
-      setSelectedLessonIdx(0);
-      setStep(2);
-    } catch (err) {
-      console.error('ZIP extraction error:', err);
-      alert('Помилка при читанні ZIP архіву. Переконайтеся, що файл не пошкоджений.');
+    } catch (err: any) {
+      console.error('ZIP Error:', err);
+      alert('Помилка обробки ZIP архіву: ' + err.message);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Handle single or multi-file selection (Markdown, JSON, YAML)
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const firstFile = files[0];
-    if (firstFile.name.toLowerCase().endsWith('.zip')) {
-      await processZipFile(firstFile);
+    const first = files[0];
+    if (first.name.toLowerCase().endsWith('.zip')) {
+      processZipFile(first);
+    } else {
+      // Read text/markdown file
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result as string;
+        setRawText(text);
+        handleParseRawText(text);
+      };
+      reader.readAsText(first);
+    }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setUploadedImageBase64(dataUrl);
+      setUploadedImageName(file.name);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Smart AI Structure & Parse (Text + Image)
+  const handleSmartAiImport = async () => {
+    const textToProcess = rawText.trim();
+    if (!textToProcess && !uploadedImageBase64) {
+      alert('Будь ласка, введіть текст або завантажте зображення.');
       return;
     }
 
-    // Direct markdown / text / yaml upload
     setIsProcessing(true);
-    setProcessingStatus('Аналіз вибраних файлів...');
+    setProcessingStatus(`AI структурує дані у формат «${targetType}»...`);
 
     try {
-      const parsedLessons: ParsedLesson[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const text = await file.text();
-        const parsed = parseStructuredLessonMarkdown(text, {}, file.name.replace(/\.(md|txt)$/i, ''));
-        const uid = `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`;
-        parsedLessons.push({
-          id: (parsed.id && !parsed.id.match(/^lesson-\d+$/)) ? parsed.id : `lesson-${uid}`,
-          title: parsed.title,
-          filename: file.name,
-          state: parsed.state || 'READY',
-          maturity: parsed.maturity || 90,
-          blocks: parsed.blocks
-        });
+      let combinedContent = textToProcess;
+      if (uploadedImageName) {
+        combinedContent = `[Зображення/Схема: ${uploadedImageName}]\n${combinedContent}`;
       }
 
-      const singleCourseName = files.length === 1 ? parsedLessons[0].title : `Пакет матеріалів (${files.length} файлів)`;
-      
-      setParsedData({
-        title: singleCourseName,
-        type: files.length > 1 ? 'COURSE' : 'ARTICLE',
-        purpose: 'LEARNING',
-        visibility: 'PRIVATE',
-        topics: ['Матеріали', 'Імпорт'],
-        description: `Матеріали структуровані та імпортовані (${files.length} файлів).`,
-        modules: [
-          {
-            id: `mod-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            title: 'Розділ: Імпортовані документи',
-            lessons: parsedLessons
-          }
-        ],
-        totalFiles: files.length
+      const res = await fetch('/api/ai/smart-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: combinedContent || 'Схема та конспект знань',
+          targetType,
+          titleHint: uploadedImageName ? uploadedImageName.replace(/\.[^.]+$/, '') : undefined,
+          topicHint: targetType === 'NOTE' ? 'Нотатки' : targetType === 'ARTICLE' ? 'Статті' : 'Курси'
+        })
       });
 
-      setSelectedModuleIdx(0);
-      setSelectedLessonIdx(0);
-      setStep(2);
-    } catch (err) {
-      alert('Помилка читання файлів.');
+      if (res.ok) {
+        const result = await res.json();
+        const data = result.data;
+
+        let lessonBlocks: Block[] = [];
+        if (Array.isArray(data.blocks) && data.blocks.length > 0) {
+          lessonBlocks = data.blocks.map((b: any, idx: number) => ({
+            id: getUniqueId(`b-${idx}`),
+            type: b.type || 'paragraph',
+            content: b
+          }));
+        } else {
+          const parsed = parseStructuredLessonMarkdown(data.markdown || textToProcess, {}, data.title);
+          lessonBlocks = parsed.blocks;
+        }
+
+        // Embed image if uploaded
+        if (uploadedImageBase64) {
+          lessonBlocks.unshift({
+            id: getUniqueId('img'),
+            type: 'image',
+            content: {
+              url: uploadedImageBase64,
+              alt: uploadedImageName || 'Імпортоване зображення',
+              caption: uploadedImageName || 'Схема матеріалу'
+            }
+          });
+        }
+
+        const parsedItem: ParsedLesson = {
+          id: getUniqueId('item'),
+          title: data.title || (targetType === 'NOTE' ? 'Нова нотатка' : 'Імпортований матеріал'),
+          state: 'READY',
+          maturity: data.maturity || 90,
+          blocks: lessonBlocks
+        };
+
+        setParsedData({
+          title: parsedItem.title,
+          type: targetType,
+          purpose: targetType === 'NOTE' ? 'REFERENCE' : 'TEACHING',
+          visibility: 'PUBLIC',
+          topics: data.topics || [targetType === 'NOTE' ? 'Нотатки' : 'База Знань'],
+          description: data.summary || 'Матеріал оцифровано та структуровано за допомогою AI.',
+          modules: [
+            {
+              id: getUniqueId('mod-smart'),
+              title: 'Основний блок',
+              lessons: [parsedItem]
+            }
+          ],
+          totalFiles: 1
+        });
+
+        setSelectedModuleIdx(0);
+        setSelectedLessonIdx(0);
+        setStep(2);
+      } else {
+        handleParseRawText();
+      }
+    } catch (e: any) {
+      console.error('Smart AI import error:', e);
+      handleParseRawText();
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Quick preset loading for demonstration
-  const handleLoadDemoPackage = () => {
-    setIsProcessing(true);
-    setProcessingStatus('Формування повного навчального курсу...');
-    
-    setTimeout(() => {
-      setParsedData({
-        title: 'Бінарні опціони: ВГОРУ або ВНИЗ — від нуля до системного рівня',
-        type: 'COURSE',
-        purpose: 'TEACHING',
-        visibility: 'PUBLIC',
-        topics: ['Бінарні опціони', 'Трейдинг', 'Фінанси', 'Ризик-менеджмент'],
-        description: 'Повний системний курс: анатомія контрактів, робота з payout, читання японських свічок, відбір активів, новинний фільтр та психологія дисципліни.',
-        totalFiles: 48,
-        modules: [
-          {
-            id: 'mod-1',
-            title: 'Модуль 1: Фундамент продукту та правила розрахунку',
-            lessons: [
-              {
-                id: 'les-1-1',
-                title: 'Що таке бінарний опціон і що відбувається на експірації',
-                blocks: [
-                  { 
-                    id: 'b-obj-1', 
-                    type: 'callout', 
-                    content: { 
-                      type: 'objective', 
-                      title: 'Мета уроку', 
-                      text: 'Зрозуміти механіку контракту до будь-якої розмови про стратегію.' 
-                    } 
-                  },
-                  { 
-                    id: 'b-p-1', 
-                    type: 'paragraph', 
-                    content: { 
-                      text: 'Бінарний опціон — контракт із результатом, прив’язаним до умови «так/ні» на визначений момент. Потрібно знати базовий актив, умову або strike, час експірації, payout та правила розрахунку.' 
-                    } 
-                  },
-                  { 
-                    id: 'b-cnc-1', 
-                    type: 'callout', 
-                    content: { 
-                      type: 'concepts', 
-                      title: 'Ключові поняття', 
-                      concepts: ['бінарний опціон', 'базовий актив', 'експірація', 'payout', 'strike/умова'] 
-                    } 
-                  },
-                  { 
-                    id: 'b-ex-1', 
-                    type: 'example', 
-                    content: { 
-                      title: 'Приклад з практики', 
-                      text: 'Навчальний приклад: контракт запитує, чи буде EUR/USD вище заданого рівня на момент T. Рух ціни до T важливий лише настільки, наскільки він впливає на фінальну умову.' 
-                    } 
-                  },
-                  { 
-                    id: 'b-imp-1', 
-                    type: 'callout', 
-                    content: { 
-                      type: 'important', 
-                      title: 'Важливо', 
-                      text: 'Правильний напрямок сам по собі не гарантує позитивного результату. Спочатку розбираємо продукт і payout.' 
-                    } 
-                  },
-                  { 
-                    id: 'b-mst-1', 
-                    type: 'callout', 
-                    content: { 
-                      type: 'mistakes', 
-                      title: 'Типові помилки', 
-                      items: [
-                        'Плутати опціон із spot/CFD',
-                        'Не читати правила експірації',
-                        'Ігнорувати payout',
-                        'Припускати правила платформи без перевірки'
-                      ] 
-                    } 
-                  },
-                  { 
-                    id: 'b-prc-1', 
-                    type: 'callout', 
-                    content: { 
-                      type: 'practice', 
-                      title: 'Практичне завдання', 
-                      text: 'На демо запиши 20 контрактів у таблицю: актив, умова, час, payout, результат. Не оцінюй стратегію, доки ці поля не заповнені.' 
-                    } 
-                  },
-                  { 
-                    id: 'b-sum-1', 
-                    type: 'callout', 
-                    content: { 
-                      type: 'summary', 
-                      title: 'Підсумок', 
-                      text: 'Бінарна угода — це не просто «вгору/вниз», а формальний контракт із правилами розрахунку.' 
-                    } 
-                  },
-                  { 
-                    id: 'b-qz-1', 
-                    type: 'quiz', 
-                    content: { 
-                      title: 'Перевір себе', 
-                      questions: [
-                        'Які параметри треба знати до входу?',
-                        'Що саме визначає результат на експірації?'
-                      ] 
-                    } 
-                  }
-                ]
-              },
-              {
-                id: 'les-1-2',
-                title: 'Брокери, платформи та специфіка OTC котирувань',
-                blocks: [
-                  { 
-                    id: 'b-obj-2', 
-                    type: 'callout', 
-                    content: { 
-                      type: 'objective', 
-                      title: 'Мета уроку', 
-                      text: 'Зрозуміти різницю між біржовим потоком цін та OTC (Over The Counter) середовищем.' 
-                    } 
-                  },
-                  { 
-                    id: 'b-p-2', 
-                    type: 'paragraph', 
-                    content: { 
-                      text: 'OTC-котирування формуються внутрішнім алгоритмом постачальника ліквідності під час вихідних або низької міжбанківської активності.' 
-                    } 
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            id: 'mod-2',
-            title: 'Модуль 2: Читання ринку та аналіз японських свічок',
-            lessons: [
-              {
-                id: 'les-2-1',
-                title: 'Японські свічки: анатомія, OHLC та контекст',
-                blocks: [
-                  { 
-                    id: 'b-obj-3', 
-                    type: 'callout', 
-                    content: { 
-                      type: 'objective', 
-                      title: 'Мета уроку', 
-                      text: 'Опанувати читання 4 параметрів свічки (OHLC) та відрізняти імпульс від шуму.' 
-                    } 
-                  },
-                  { 
-                    id: 'b-cnc-2', 
-                    type: 'callout', 
-                    content: { 
-                      type: 'concepts', 
-                      title: 'Ключові поняття', 
-                      concepts: ['OHLC', 'тіло свічки', 'тінь', 'діапазон', 'волатильність'] 
-                    } 
-                  },
-                  { 
-                    id: 'b-sch-1', 
-                    type: 'callout', 
-                    content: { 
-                      type: 'schema', 
-                      title: 'Схема OHLC-свічки + послідовність «Імпульс → Відкат → Продовження»', 
-                      steps: [
-                        'Open (Відкриття): Базовий рівень старту ціни свічки',
-                        'High (Максимум): Верхня тінь — опір продавців',
-                        'Low (Мінімум): Нижня тінь — підтримка покупців',
-                        'Close (Закриття): Фіксація результату таймфрейму',
-                        'Фаза 1 — Імпульс: Спрямований сильний рух кількома свічками',
-                        'Фаза 2 — Відкат: Корекція до 38.2% - 50% діапазону',
-                        'Фаза 3 — Продовження: Підтвердження тренду та експірація'
-                      ] 
-                    } 
-                  },
-                  { 
-                    id: 'b-mst-2', 
-                    type: 'callout', 
-                    content: { 
-                      type: 'mistakes', 
-                      title: 'Типові помилки', 
-                      items: [
-                        'Торгувати за кольором свічки',
-                        'Ігнорувати загальний контекст тренду',
-                        'Порівнювати різні таймфрейми без нормалізації'
-                      ] 
-                    } 
-                  },
-                  { 
-                    id: 'b-sum-2', 
-                    type: 'callout', 
-                    content: { 
-                      type: 'summary', 
-                      title: 'Підсумок', 
-                      text: 'Уміння описати те, що відбулося, — фундамент для тестованого прогнозу.' 
-                    } 
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      });
-      setIsProcessing(false);
-      setSelectedModuleIdx(0);
-      setSelectedLessonIdx(0);
-      setStep(2);
-    }, 600);
-  };
-
-  // Smart Parsing of Raw Text Paste (Handles structured lessons, YAML frontmatter, markdown sections)
+  // Standard Parse of Raw Text Paste
   const handleParseRawText = (textOverride?: string) => {
     const targetText = textOverride || rawText;
     if (!targetText.trim()) return;
 
     try {
-      // 1. Check if targetText is YAML or JSON manifest
-      let isManifest = false;
-      let manifestObj: any = null;
-
-      if (targetText.trim().startsWith('{') || targetText.trim().startsWith('---') || targetText.includes('structure:')) {
-        try {
-          manifestObj = targetText.trim().startsWith('{') ? JSON.parse(targetText) : yaml.parse(targetText);
-          if (manifestObj && (manifestObj.structure || manifestObj.modules || manifestObj.title)) {
-            isManifest = true;
-          }
-        } catch {
-          // not a pure manifest, continue to structured lesson parser
-        }
-      }
-
-      if (isManifest && manifestObj?.structure?.modules) {
-        const modules: ParsedModule[] = manifestObj.structure.modules.map((m: any, mIdx: number) => ({
-          id: m.id || `mod-${mIdx}-${Math.random().toString(36).substring(2, 6)}`,
-          title: m.title || `Модуль ${mIdx + 1}`,
-          lessons: m.lessons?.map((l: any, lIdx: number) => {
-            const parsed = parseStructuredLessonMarkdown(l.content || l.text || l.title || '', {}, l.title);
-            const uid = `${Date.now()}-${mIdx}-${lIdx}-${Math.random().toString(36).substring(2, 7)}`;
-            return {
-              id: (l.id || (parsed.id && !parsed.id.match(/^lesson-\d+$/))) ? (l.id || parsed.id) : `les-${uid}`,
-              title: l.title || parsed.title,
-              blocks: parsed.blocks
-            };
-          }) || []
-        }));
-
-        setParsedData({
-          title: manifestObj.title || 'Імпортований навчальний курс',
-          type: 'COURSE',
-          purpose: 'TEACHING',
-          visibility: 'PUBLIC',
-          topics: manifestObj.topics || ['Курси', 'Матеріали'],
-          description: manifestObj.description || 'Імпортовано зі структурованого маніфесту',
-          modules,
-          totalFiles: modules.reduce((acc, m) => acc + m.lessons.length, 0)
-        });
-        setSelectedModuleIdx(0);
-        setSelectedLessonIdx(0);
-        setStep(2);
-        return;
-      }
-
-      // 2. Parse structured lesson text directly with semantic section detection
       const lessonChunks = targetText.split(/(?=\nid:\s*lesson-|^id:\s*lesson-)/i).filter(c => c.trim().length > 0);
 
       const parsedLessons: ParsedLesson[] = lessonChunks.map((chunk, idx) => {
         const parsed = parseStructuredLessonMarkdown(chunk, {}, `Урок ${idx + 1}`);
-        const uid = `${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+        const uid = getUniqueId(`${idx}`);
         return {
           id: (parsed.id && !parsed.id.match(/^lesson-\d+$/)) ? parsed.id : `lesson-${uid}`,
           title: parsed.title,
@@ -640,22 +379,22 @@ export default function ImportPage() {
         };
       });
 
-      const firstLessonTitle = parsedLessons[0]?.title || 'Імпортований урок';
+      const firstLessonTitle = parsedLessons[0]?.title || 'Імпортований матеріал';
       const courseTitle = parsedLessons.length === 1 
         ? firstLessonTitle 
         : `Курс: ${firstLessonTitle.replace(/^[«"']|["'»]$/g, '')}`;
 
       setParsedData({
         title: courseTitle,
-        type: parsedLessons.length > 1 ? 'COURSE' : 'LESSON',
+        type: parsedLessons.length > 1 ? 'COURSE' : targetType,
         purpose: 'TEACHING',
         visibility: 'PUBLIC',
-        topics: ['Курси', 'Навчання', 'База Знань'],
-        description: `Матеріал розпарсено з ${parsedLessons.length} уроків та ${parsedLessons[0]?.blocks?.length || 0} структурних блоків.`,
+        topics: ['Курси', 'Матеріали'],
+        description: `Матеріал розпарсено з ${parsedLessons.length} блоків.`,
         modules: [
           {
-            id: `mod-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            title: 'Модуль 1: Основний навчальний блок',
+            id: getUniqueId('mod'),
+            title: 'Модуль 1',
             lessons: parsedLessons
           }
         ],
@@ -671,50 +410,44 @@ export default function ImportPage() {
     }
   };
 
-  const handleAiStructureAndParse = async () => {
-    if (!rawText.trim()) return;
-    setIsProcessing(true);
-    setProcessingStatus('Cloudflare AI аналізує текст та формує структуру уроку...');
-
-    try {
-      const res = await fetch('/api/ai/structure', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: rawText.trim() })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.structuredText) {
-          setRawText(data.structuredText);
-          handleParseRawText(data.structuredText);
-          return;
-        }
-      }
-      handleParseRawText();
-    } catch (e) {
-      console.error('AI Structure error:', e);
-      handleParseRawText();
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   // Final Commit to Storage & Redirect
   const handleFinalImport = () => {
     if (!parsedData) return;
 
-    const mainCourseId = `course-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const mainCourseId = getUniqueId('unit');
     const allUnitsToCreate: ContentUnit[] = [];
     const usedLessonIds = new Set<string>();
 
-    // 1. Create individual lesson units so every link is interactive and opens full content
+    // If it's a single note or article, create 1 direct unit
+    if (parsedData.type === 'NOTE' || (parsedData.modules.length === 1 && parsedData.modules[0].lessons.length === 1 && parsedData.type !== 'COURSE')) {
+      const singleLesson = parsedData.modules[0].lessons[0];
+      const singleUnit: ContentUnit = {
+        id: mainCourseId,
+        title: singleLesson.title || parsedData.title,
+        type: parsedData.type,
+        state: singleLesson.state || 'READY',
+        maturity: singleLesson.maturity || 90,
+        topicIds: parsedData.topics,
+        purpose: parsedData.purpose,
+        visibility: parsedData.visibility,
+        blocks: singleLesson.blocks,
+        relations: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      contentRepo.add(singleUnit);
+      router.push(`/content/${mainCourseId}`);
+      return;
+    }
+
+    // Otherwise create course with sub-lessons
     const createdModules: CourseModule[] = parsedData.modules.map((m, mIdx) => {
       const lessonIds: string[] = [];
 
       m.lessons.forEach((les, lIdx) => {
         let lessonUnitId = les.id;
         if (!lessonUnitId || usedLessonIds.has(lessonUnitId) || lessonUnitId.match(/^lesson-\d+$/)) {
-          lessonUnitId = `lesson-${Date.now()}-${mIdx}-${lIdx}-${Math.random().toString(36).substring(2, 7)}`;
+          lessonUnitId = getUniqueId(`lesson-${mIdx}-${lIdx}`);
         }
         usedLessonIds.add(lessonUnitId);
         lessonIds.push(lessonUnitId);
@@ -736,13 +469,12 @@ export default function ImportPage() {
       });
 
       return {
-        id: m.id || `mod-${mIdx}-${Math.random().toString(36).substring(2, 6)}`,
+        id: m.id || getUniqueId(`mod-${mIdx}`),
         title: m.title,
         lessonIds
       };
     });
 
-    // 2. Create the parent Course unit
     const parentCourseUnit: ContentUnit = {
       id: mainCourseId,
       title: parsedData.title,
@@ -754,12 +486,12 @@ export default function ImportPage() {
       visibility: parsedData.visibility,
       blocks: [
         {
-          id: `desc-${mainCourseId}`,
+          id: getUniqueId('desc'),
           type: 'paragraph',
           content: { text: parsedData.description }
         },
         {
-          id: `callout-${mainCourseId}`,
+          id: getUniqueId('callout'),
           type: 'callout',
           content: {
             type: 'info',
@@ -774,11 +506,7 @@ export default function ImportPage() {
     };
 
     allUnitsToCreate.unshift(parentCourseUnit);
-
-    // Persist all units
     allUnitsToCreate.forEach(unit => contentRepo.add(unit));
-
-    // Redirect to newly created course
     router.push(`/content/${mainCourseId}`);
   };
 
@@ -786,18 +514,18 @@ export default function ImportPage() {
     <div className="p-4 sm:p-8 max-w-5xl mx-auto w-full pb-10 sm:pb-12">
       
       {/* Header */}
-      <header className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <header className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60">
-              Стандарт InfoHub & Markdown
+              Імпорт та структуризація знань
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">
-            Імпорт та парсинг знань
+            Імпорт матеріалів
           </h1>
-          <p className="text-stone-500 text-sm mt-1">
-            Завантажуйте ZIP-пакети курсів, Markdown або вставляйте текст — система автоматично структурує метадані, схеми, поняття та інтерактивні блоки.
+          <p className="text-stone-500 text-xs sm:text-sm mt-1">
+            Підтримує ZIP-пакети курсів, вкладені SVG/PNG схеми, Markdown конспекти та AI-оцифрування сирого тексту.
           </p>
         </div>
 
@@ -809,7 +537,7 @@ export default function ImportPage() {
             onClick={() => setStep(1)}
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Назад до завантаження</span>
+            <span>Назад</span>
           </Button>
         )}
       </header>
@@ -817,107 +545,221 @@ export default function ImportPage() {
       {/* STEP 1: Upload / Input */}
       {step === 1 && (
         <div className="space-y-6">
-          {/* Dropzone Container */}
-          <div 
-            className={cn(
-              "p-8 sm:p-12 border-2 border-dashed rounded-3xl text-center transition-all bg-stone-50/50 cursor-pointer relative",
-              isDragging ? "border-emerald-500 bg-emerald-50/40" : "border-stone-300 hover:border-emerald-400 hover:bg-stone-50"
-            )}
-            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setIsDragging(false);
-              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                const f = e.dataTransfer.files[0];
-                if (f.name.toLowerCase().endsWith('.zip')) {
-                  processZipFile(f);
-                } else {
-                  handleFileChange({ target: { files: e.dataTransfer.files } } as any);
-                }
-              }
-            }}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              className="hidden" 
-              multiple 
-              accept=".zip,.md,.markdown,.json,.yaml,.yml,.txt"
-              onChange={handleFileChange}
-            />
-
-            <div className="w-16 h-16 rounded-2xl bg-emerald-100/80 text-emerald-700 flex items-center justify-center mx-auto mb-4 shadow-xs">
-              <UploadCloud className="w-8 h-8" />
-            </div>
-
-            <h3 className="text-lg sm:text-xl font-bold text-stone-900 mb-1">
-              Перетягніть ZIP-архів курсу або Markdown файли сюди
-            </h3>
-            <p className="text-stone-500 text-xs sm:text-sm max-w-md mx-auto mb-6">
-              Підтримує <strong>INFOHUB_PACKAGE.zip</strong> з папками модулів, графічними схемами SVG/PNG, <code>manifest.yaml</code> або звичайні <code>.md</code> конспекти.
-            </p>
-
-            <div className="flex items-center justify-center gap-3 flex-wrap">
-              <Button size="md" className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs pointer-events-none">
-                <FolderArchive className="w-4 h-4" />
-                <span>Вибрати файл з комп’ютера</span>
-              </Button>
-            </div>
+          
+          {/* Mode Switcher Tabs */}
+          <div className="flex items-center justify-center p-1 bg-stone-100 rounded-2xl max-w-md mx-auto">
+            <button
+              type="button"
+              onClick={() => setImportMode('standard')}
+              className={cn(
+                "flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2",
+                importMode === 'standard' 
+                  ? "bg-white text-stone-900 shadow-2xs" 
+                  : "text-stone-600 hover:text-stone-900"
+              )}
+            >
+              <FolderArchive className="w-4 h-4 text-emerald-600" />
+              <span>ZIP-пакети & Файли</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportMode('smart')}
+              className={cn(
+                "flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2",
+                importMode === 'smart' 
+                  ? "bg-white text-purple-900 shadow-2xs" 
+                  : "text-stone-600 hover:text-stone-900"
+              )}
+            >
+              <Sparkles className="w-4 h-4 text-purple-600" />
+              <span>AI Смарт-Імпорт</span>
+            </button>
           </div>
 
-          {/* Raw text Paste Area */}
-          <div className="max-w-4xl mx-auto w-full">
-            <Card className="p-6 sm:p-8 rounded-3xl border border-stone-200/90 flex flex-col">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2 text-stone-900 font-bold text-base">
-                  <Code className="w-5 h-5 text-emerald-600" />
-                  <span>Вставка тексту уроку чи маніфесту</span>
+          {importMode === 'standard' ? (
+            /* STANDARD ZIP & MD IMPORT */
+            <div className="space-y-6">
+              <div 
+                className={cn(
+                  "p-8 sm:p-12 border-2 border-dashed rounded-3xl text-center transition-all bg-stone-50/50 cursor-pointer relative",
+                  isDragging ? "border-emerald-500 bg-emerald-50/40" : "border-stone-300 hover:border-emerald-400 hover:bg-stone-50"
+                )}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    const f = e.dataTransfer.files[0];
+                    if (f.name.toLowerCase().endsWith('.zip')) {
+                      processZipFile(f);
+                    } else {
+                      handleFileChange({ target: { files: e.dataTransfer.files } } as any);
+                    }
+                  }
+                }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  multiple 
+                  accept=".zip,.md,.markdown,.json,.yaml,.yml,.txt"
+                  onChange={handleFileChange}
+                />
+
+                <div className="w-16 h-16 rounded-2xl bg-emerald-100/80 text-emerald-700 flex items-center justify-center mx-auto mb-4 shadow-xs">
+                  <UploadCloud className="w-8 h-8" />
                 </div>
-                <span className="text-[10px] text-stone-400 font-mono">Markdown / YAML / TXT</span>
-              </div>
-              <p className="text-xs text-stone-500 mb-3">
-                Вставте текст уроку, статті або маніфесту. Ви можете скористатися кнопкою AI-структурування для автоматичного створення блоків та практичних завдань.
-              </p>
 
-              <Textarea 
-                value={rawText}
-                onChange={(e) => setRawText(e.target.value)}
-                placeholder={'Вставте конспект, статтю або розмітку уроку...'}
-                className="h-36 text-xs font-mono resize-none rounded-xl mb-4 bg-stone-50/50"
-              />
+                <h3 className="text-lg sm:text-xl font-bold text-stone-900 mb-1">
+                  Перетягніть ZIP-архів або Markdown файли сюди
+                </h3>
+                <p className="text-stone-500 text-xs sm:text-sm max-w-md mx-auto mb-6">
+                  Автоматично розпізнає структуру модулів, файли <code>manifest.yaml</code> та вкладені зображення / діаграми.
+                </p>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <Button 
-                  onClick={handleAiStructureAndParse}
-                  disabled={!rawText.trim() || isProcessing}
-                  className="gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl justify-center text-xs font-semibold shadow-xs"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-purple-200" />
-                  <span>AI структурування (Cloudflare AI)</span>
+                <Button size="md" className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs pointer-events-none">
+                  <FolderArchive className="w-4 h-4" />
+                  <span>Вибрати архів з комп’ютера</span>
                 </Button>
+              </div>
 
+              {/* Paste Raw Markdown */}
+              <Card className="p-6 rounded-3xl border border-stone-200">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 text-stone-900 font-bold text-sm">
+                    <Code className="w-4 h-4 text-emerald-600" />
+                    <span>Або вставте Markdown текст уроку / маніфесту</span>
+                  </div>
+                </div>
+                <Textarea 
+                  value={rawText}
+                  onChange={(e) => setRawText(e.target.value)}
+                  placeholder="Вставте вміст .md файлу з YAML frontmatter..."
+                  className="h-32 text-xs font-mono resize-none rounded-xl mb-3 bg-stone-50/50"
+                />
                 <Button 
-                  variant="secondary"
                   onClick={() => handleParseRawText()}
                   disabled={!rawText.trim() || isProcessing}
-                  className="gap-2 bg-white border-stone-200 hover:bg-stone-50 text-stone-800 rounded-xl justify-center text-xs font-semibold"
+                  className="gap-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-semibold"
                 >
-                  <span>Розпарсити як є</span>
+                  <span>Розпарсити та структурувати</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Button>
-              </div>
-            </Card>
-          </div>
+              </Card>
+            </div>
+          ) : (
+            /* AI SMART IMPORT */
+            <div className="space-y-6">
+              <Card className="p-6 sm:p-8 rounded-3xl border border-purple-200 bg-purple-50/20 shadow-xs space-y-6">
+                
+                {/* Target Type Selector */}
+                <div>
+                  <label className="text-xs font-bold text-stone-900 mb-2 block uppercase tracking-wider">
+                    1. Оберіть куди створити матеріал:
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { id: 'NOTE', title: 'Нотатка', icon: StickyNote, desc: 'Короткий конспект' },
+                      { id: 'ARTICLE', title: 'Стаття', icon: FileText, desc: 'Аналітичний матеріал' },
+                      { id: 'LESSON', title: 'Урок', icon: GraduationCap, desc: 'Зі схемами і цілями' },
+                      { id: 'COURSE', title: 'Курс', icon: BookOpen, desc: 'Навчальний блок' }
+                    ].map(t => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setTargetType(t.id as ContentType)}
+                        className={cn(
+                          "p-3 rounded-2xl border text-left transition-all",
+                          targetType === t.id
+                            ? "bg-purple-600 text-white border-purple-600 shadow-xs font-semibold"
+                            : "bg-white border-stone-200 text-stone-700 hover:border-purple-300"
+                        )}
+                      >
+                        <t.icon className={cn("w-4 h-4 mb-1.5", targetType === t.id ? "text-white" : "text-purple-600")} />
+                        <div className="text-xs font-bold">{t.title}</div>
+                        <div className={cn("text-[10px]", targetType === t.id ? "text-purple-200" : "text-stone-400")}>
+                          {t.desc}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Upload Image / Diagram */}
+                <div>
+                  <label className="text-xs font-bold text-stone-900 mb-2 block uppercase tracking-wider">
+                    2. Зображення або схема (опціонально):
+                  </label>
+                  <div 
+                    onClick={() => imageInputRef.current?.click()}
+                    className="p-4 border border-dashed border-purple-300 rounded-2xl bg-white hover:bg-purple-50/50 transition-colors cursor-pointer flex items-center justify-between gap-3"
+                  >
+                    <input 
+                      type="file" 
+                      ref={imageInputRef} 
+                      className="hidden" 
+                      accept="image/*,.svg"
+                      onChange={handleImageUpload}
+                    />
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                        <ImageIcon className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-stone-900 truncate">
+                          {uploadedImageName || 'Прикріпити картинку або SVG-діаграму'}
+                        </div>
+                        <div className="text-[10px] text-stone-400">PNG, JPG, WebP або векторний SVG</div>
+                      </div>
+                    </div>
+                    {uploadedImageBase64 ? (
+                      <Badge variant="success" className="text-xs">Завантажено</Badge>
+                    ) : (
+                      <Button size="sm" variant="secondary" className="text-xs rounded-xl pointer-events-none">
+                        Вибрати
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Input Text or Raw Notes */}
+                <div>
+                  <label className="text-xs font-bold text-stone-900 mb-2 block uppercase tracking-wider">
+                    3. Вставте текст, конспект чи опис:
+                  </label>
+                  <Textarea 
+                    value={rawText}
+                    onChange={(e) => setRawText(e.target.value)}
+                    placeholder="Вставте будь-який сирий текст, скопійовані замітки або тези — AI автоматично витягне мету, ключові поняття, таблиці та оформить у блоки..."
+                    className="h-36 text-xs font-sans rounded-xl mb-3 bg-white border-purple-200 focus:border-purple-400"
+                  />
+                </div>
+
+                {/* Action CTA */}
+                <div className="flex items-center gap-3">
+                  <Button 
+                    onClick={handleSmartAiImport}
+                    disabled={(!rawText.trim() && !uploadedImageBase64) || isProcessing}
+                    className="gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs px-6 py-2.5"
+                  >
+                    <Sparkles className="w-4 h-4 text-purple-200" />
+                    <span>Оцифрувати та структурувати через Cloudflare AI</span>
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          )}
 
           {isProcessing && (
             <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full text-center shadow-xl border border-stone-200 animate-in zoom-in-95">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4 animate-bounce">
-                  <Layers className="w-6 h-6" />
+                <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center mx-auto mb-4 animate-bounce">
+                  <Sparkles className="w-6 h-6" />
                 </div>
-                <h3 className="font-bold text-stone-900 text-lg mb-1">Обробка матеріалів</h3>
+                <h3 className="font-bold text-stone-900 text-lg mb-1">Обробка AI</h3>
                 <p className="text-xs text-stone-500">{processingStatus}</p>
               </div>
             </div>
@@ -930,96 +772,72 @@ export default function ImportPage() {
         <div className="space-y-6 animate-in fade-in">
           
           {/* Top Summary Banner */}
-          <div className="bg-emerald-900 text-white rounded-3xl p-6 sm:p-8 shadow-sm">
+          <div className="bg-stone-900 text-white rounded-3xl p-6 sm:p-8 shadow-sm">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Badge variant="success" className="bg-emerald-500/20 text-emerald-300 border-emerald-400/30">
                     Успішно розпарсено
                   </Badge>
-                  <span className="text-xs text-emerald-200">
-                    {parsedData.modules.length} модулів • {parsedData.modules.reduce((a, m) => a + m.lessons.length, 0)} уроків
+                  <span className="text-xs text-stone-300">
+                    Тип: {parsedData.type} • {parsedData.modules.length} модуль(ів)
                   </span>
                 </div>
                 <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
                   {parsedData.title}
                 </h2>
-                <p className="text-emerald-100/80 text-xs sm:text-sm max-w-2xl leading-relaxed">
+                <p className="text-stone-300 text-xs sm:text-sm max-w-2xl leading-relaxed">
                   {parsedData.description}
                 </p>
-                <div className="flex items-center gap-2 pt-2">
-                  <span className="text-xs text-emerald-200">Зберегти як:</span>
-                  <select 
-                    className="bg-emerald-950 border border-emerald-700 text-emerald-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-emerald-400"
-                    value={parsedData.type}
-                    onChange={(e) => setParsedData({...parsedData, type: e.target.value as any})}
-                  >
-                    <option value="NOTE">📝 Нотатка</option>
-                    <option value="ARTICLE">📄 Стаття</option>
-                    <option value="LESSON">📖 Урок</option>
-                    <option value="MATERIAL">📚 Матеріал</option>
-                    <option value="COURSE">🎓 Курс</option>
-                  </select>
-                  <span className="text-[10px] text-emerald-400/70 ml-2 italic">
-                    (Авто-рекомендація: {parsedData.type === 'COURSE' ? 'Курс, оскільки файлів багато' : 'Нотатка'})
-                  </span>
-                </div>
               </div>
 
               <Button 
                 onClick={handleFinalImport}
-                className="gap-2 bg-emerald-400 hover:bg-emerald-300 text-emerald-950 font-bold rounded-2xl px-6 py-3 shadow-md shrink-0 justify-center"
+                size="lg" 
+                className="gap-2 bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-bold rounded-2xl shadow-lg shrink-0 px-6"
               >
-                <Check className="w-5 h-5" />
-                <span>Зберегти в базу знань</span>
+                <CheckCircle2 className="w-5 h-5" />
+                <span>Зберегти в базу та відкрити</span>
               </Button>
             </div>
           </div>
 
-          {/* Module & Lesson Explorer */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Module / Lesson Navigation & Block View */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            {/* Left Column: Modules & Lessons Tree (5 cols) */}
-            <div className="lg:col-span-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-400">
-                  Зміст програми ({parsedData.modules.length} модулів)
-                </h3>
+            {/* Left Column: Modules & Lessons tree */}
+            <div className="lg:col-span-1 space-y-3">
+              <div className="text-xs font-bold text-stone-400 uppercase tracking-wider px-1">
+                Зміст курсу ({parsedData.modules.reduce((a, m) => a + m.lessons.length, 0)} елементів)
               </div>
 
-              <div className="space-y-3 max-h-[560px] overflow-y-auto pr-1">
-                {parsedData.modules.map((mod, mIdx) => (
-                  <div key={mod.id ? `${mod.id}-${mIdx}` : `mod-${mIdx}`} className="bg-white rounded-2xl border border-stone-200/90 overflow-hidden shadow-2xs">
-                    <div 
-                      onClick={() => { setSelectedModuleIdx(mIdx); setSelectedLessonIdx(0); }}
-                      className={cn(
-                        "p-3.5 flex items-center justify-between cursor-pointer font-bold text-xs sm:text-sm transition-colors border-b border-stone-100",
-                        selectedModuleIdx === mIdx ? "bg-emerald-50/80 text-emerald-900" : "bg-stone-50/50 hover:bg-stone-100/60 text-stone-800"
-                      )}
-                    >
-                      <span className="truncate pr-2">{mod.title}</span>
-                      <span className="text-[11px] font-semibold text-stone-500 bg-white px-2 py-0.5 rounded-full border border-stone-200 shrink-0">
-                        {mod.lessons.length}
-                      </span>
+              <div className="space-y-2">
+                {parsedData.modules.map((m, mIdx) => (
+                  <div key={m.id} className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
+                    <div className="p-3 bg-stone-50/70 border-b border-stone-100 flex items-center justify-between">
+                      <span className="text-xs font-bold text-stone-800 truncate">{m.title}</span>
+                      <span className="text-[10px] font-mono text-stone-500">{m.lessons.length} уроків</span>
                     </div>
-
-                    <div className="divide-y divide-stone-100">
-                      {mod.lessons.map((les, lIdx) => {
+                    <div className="p-1 space-y-0.5">
+                      {m.lessons.map((les, lIdx) => {
                         const isSelected = selectedModuleIdx === mIdx && selectedLessonIdx === lIdx;
                         return (
-                          <div 
-                            key={les.id ? `${les.id}-${mIdx}-${lIdx}` : `les-${mIdx}-${lIdx}`}
-                            onClick={() => { setSelectedModuleIdx(mIdx); setSelectedLessonIdx(lIdx); }}
+                          <button
+                            key={les.id}
+                            onClick={() => {
+                              setSelectedModuleIdx(mIdx);
+                              setSelectedLessonIdx(lIdx);
+                            }}
                             className={cn(
-                              "p-3 text-xs flex items-center justify-between cursor-pointer transition-colors",
-                              isSelected ? "bg-emerald-50 text-emerald-950 font-bold" : "hover:bg-stone-50 text-stone-700"
+                              "w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors",
+                              isSelected 
+                                ? "bg-emerald-50 text-emerald-900 font-bold border border-emerald-200/80" 
+                                : "text-stone-600 hover:bg-stone-50"
                             )}
                           >
-                            <span className="truncate pr-2">{lIdx + 1}. {les.title}</span>
-                            <span className="text-[10px] text-stone-400 font-mono shrink-0">
-                              {les.blocks.length} блоків
-                            </span>
-                          </div>
+                            <span className="truncate flex-1">{les.title}</span>
+                            <ChevronRight className="w-3.5 h-3.5 text-stone-400 shrink-0 ml-1" />
+                          </button>
                         );
                       })}
                     </div>
@@ -1028,37 +846,31 @@ export default function ImportPage() {
               </div>
             </div>
 
-            {/* Right Column: Live Lesson Content Preview (7 cols) */}
-            <div className="lg:col-span-7 bg-white rounded-3xl border border-stone-200/90 p-5 sm:p-7 shadow-2xs min-w-0">
-              {parsedData.modules[selectedModuleIdx]?.lessons[selectedLessonIdx] ? (
-                <div>
-                  <div className="flex items-center justify-between border-b border-stone-100 pb-3 mb-4 flex-wrap gap-2">
+            {/* Right Column: Live Block Preview */}
+            <div className="lg:col-span-2">
+              {parsedData.modules[selectedModuleIdx]?.lessons[selectedLessonIdx] && (
+                <Card className="p-6 sm:p-8 rounded-3xl border border-stone-200 space-y-6 bg-white">
+                  <div className="pb-4 border-b border-stone-100 flex items-center justify-between">
                     <div>
-                      <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">
-                        {parsedData.modules[selectedModuleIdx].title}
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold">
+                        Попередній перегляд уроку
                       </span>
-                      <h3 className="font-bold text-base sm:text-lg text-stone-900 mt-0.5">
+                      <h3 className="text-lg font-bold text-stone-900 mt-1">
                         {parsedData.modules[selectedModuleIdx].lessons[selectedLessonIdx].title}
                       </h3>
                     </div>
-                    <span className="text-xs text-stone-400 font-mono bg-stone-100 px-2.5 py-1 rounded-full">
+                    <Badge variant="gray">
                       {parsedData.modules[selectedModuleIdx].lessons[selectedLessonIdx].blocks.length} блоків
-                    </span>
+                    </Badge>
                   </div>
 
-                  {/* Render Lesson Blocks */}
-                  <div className="max-h-[500px] overflow-y-auto pr-2 space-y-4">
-                    {parsedData.modules[selectedModuleIdx].lessons[selectedLessonIdx].blocks.map((b, bIdx) => (
-                      <div key={b.id ? `${b.id}-${bIdx}` : `block-${bIdx}`} className="w-full">
-                        <BlockRenderer block={b} />
-                      </div>
+                  {/* Render all blocks */}
+                  <div className="space-y-4">
+                    {parsedData.modules[selectedModuleIdx].lessons[selectedLessonIdx].blocks.map(block => (
+                      <BlockRenderer key={block.id} block={block} />
                     ))}
                   </div>
-                </div>
-              ) : (
-                <div className="text-center py-16 text-stone-400">
-                  Виберіть урок зі списку зліва для перегляду вмісту
-                </div>
+                </Card>
               )}
             </div>
 

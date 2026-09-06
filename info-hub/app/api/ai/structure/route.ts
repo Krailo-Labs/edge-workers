@@ -51,7 +51,9 @@ maturity: 95
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Будь ласка, структуруй наступний матеріал:\n\n${text}` }
-      ]
+      ],
+      max_tokens: 3500,
+      temperature: 0.5
     });
 
     const structuredText = response?.response || response?.text || (typeof response === 'string' ? response : null);

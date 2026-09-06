@@ -16,6 +16,7 @@ import { cn } from '@/shared/utils';
 const NAV_ROUTES = [
   { path: '/', label: 'Головна (Dashboard)' },
   { path: '/inbox', label: 'Вхідні (Inbox)' },
+  { path: '/notes', label: 'Нотатки (Notes)' },
   { path: '/content?type=MATERIAL', label: 'Матеріали' },
   { path: '/content?type=ARTICLE', label: 'Статті' },
   { path: '/content?type=LESSON', label: 'Уроки' },
@@ -47,7 +48,8 @@ export default function AdminPage() {
     updatePermissions 
   } = useAuth();
 
-  const [pin, setPin] = useState('');
+  const [password, setPassword] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'permissions' | 'data' | 'feedback' | 'cloudflare'>('permissions');
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -55,13 +57,31 @@ export default function AdminPage() {
   const content = contentRepo.getAll();
   const feedback = feedbackRepo.getAll();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === '70051') {
-      setAdmin(true);
-      setError('');
-    } else {
-      setError('Невірний PIN-код. Спробуйте 70051');
+    if (!password.trim()) return;
+
+    setIsVerifying(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/admin/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: password.trim() })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAdmin(true);
+        setPassword('');
+        setError('');
+      } else {
+        setError(data.message || 'Невірний пароль адміністратора');
+      }
+    } catch {
+      setError('Помилка з’єднання з сервером перевірки');
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -79,20 +99,25 @@ export default function AdminPage() {
             <Key className="w-8 h-8 text-emerald-400" />
           </div>
           <h1 className="text-2xl font-bold text-stone-900 mb-2">Вхід для адміністратора</h1>
-          <p className="text-stone-500 mb-6 text-sm">Введіть PIN-код доступу до керування правами (demo: 70051)</p>
+          <p className="text-stone-500 mb-6 text-sm">Введіть пароль доступу до панелі керування</p>
           
           <form onSubmit={handleLogin} className="w-full space-y-4">
             <input 
               type="password" 
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              placeholder="PIN-код" 
-              className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-center text-xl tracking-widest outline-none focus:border-stone-400 focus:bg-white transition-all font-mono"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Пароль адміністратора" 
+              className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-center text-lg outline-none focus:border-stone-400 focus:bg-white transition-all font-mono"
               autoFocus
+              disabled={isVerifying}
             />
             {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
-            <Button type="submit" className="w-full bg-stone-900 hover:bg-stone-800 text-white py-3 rounded-xl">
-              Увійти в панель
+            <Button 
+              type="submit" 
+              disabled={isVerifying || !password.trim()}
+              className="w-full bg-stone-900 hover:bg-stone-800 text-white py-3 rounded-xl shadow-xs"
+            >
+              {isVerifying ? 'Перевірка доступу...' : 'Увійти в панель'}
             </Button>
           </form>
         </Card>

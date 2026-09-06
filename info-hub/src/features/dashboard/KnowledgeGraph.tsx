@@ -1,343 +1,407 @@
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
-import * as d3 from 'd3';
+import React, { useState, useMemo } from 'react';
 import { useContentRepo, useTopicRepo } from '@/data/mock/db';
 import { useRouter } from 'next/navigation';
-import { Maximize2, Minimize2, Sparkles, Filter, ExternalLink, ArrowRight, X } from 'lucide-react';
+import { 
+  Sparkles, 
+  ExternalLink, 
+  ArrowRight, 
+  X, 
+  Layers, 
+  Share2, 
+  BookOpen, 
+  FileText, 
+  GraduationCap, 
+  StickyNote, 
+  LayoutTemplate,
+  CheckCircle2,
+  Clock,
+  Network,
+  Maximize2,
+  Minimize2
+} from 'lucide-react';
 import { Button, Badge } from '@/shared/ui/components';
 import { TYPE_TRANSLATIONS, STATE_TRANSLATIONS } from '@/shared/utils/translations';
-import { ContentType } from '@/shared/types';
+import { ContentType, ContentUnit, Topic } from '@/shared/types';
 import { cn } from '@/shared/utils';
+import Link from 'next/link';
 
 export function KnowledgeGraph() {
-  const containerRef = useRef<HTMLDivElement>(null);
   const { getAll: getAllContent } = useContentRepo();
   const { getAll: getAllTopics } = useTopicRepo();
   const router = useRouter();
 
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'matrix' | 'schema'>('matrix');
   const [filterType, setFilterType] = useState<string>('ALL');
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [selectedContentItem, setSelectedContentItem] = useState<ContentUnit | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const rawContent = getAllContent();
   const rawTopics = getAllTopics();
 
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const width = containerRef.current.clientWidth || 800;
-    const height = isExpanded ? 650 : 380;
-    
-    // Clear previous elements
-    d3.select(containerRef.current).selectAll("*").remove();
-
-    // Prepare deeply cloned clean nodes and links (no cyclic mutation leakage)
-    const nodes: any[] = [];
-    const links: any[] = [];
-
-    // Filter content if chosen
-    const filteredContent = filterType === 'ALL' 
-      ? rawContent 
-      : rawContent.filter(c => c.type === filterType);
-
-    rawTopics.forEach(t => {
-      nodes.push({
-        id: t.id,
-        group: 'topic',
-        title: t.name,
-        radius: isExpanded ? 28 : 22,
-      });
+  // Filtered items
+  const filteredContent = useMemo(() => {
+    return rawContent.filter(item => {
+      const matchType = filterType === 'ALL' || item.type === filterType;
+      const matchTopic = !selectedTopicId || (item.topicIds && item.topicIds.includes(selectedTopicId));
+      return matchType && matchTopic;
     });
+  }, [rawContent, filterType, selectedTopicId]);
 
-    filteredContent.forEach(c => {
-      nodes.push({
-        id: c.id,
-        group: 'content',
-        title: c.title,
-        type: c.type,
-        state: c.state,
-        maturity: c.maturity,
-        radius: isExpanded ? 16 : 13,
-      });
-
-      if (Array.isArray(c.topicIds)) {
-        c.topicIds.forEach(tId => {
-          if (rawTopics.some(t => t.id === tId)) {
-            links.push({
-              source: c.id,
-              target: tId,
-              value: 1
-            });
-          }
-        });
-      }
+  // Group items by topic
+  const topicGroups = useMemo(() => {
+    return rawTopics.map(topic => {
+      const items = rawContent.filter(c => 
+        (filterType === 'ALL' || c.type === filterType) &&
+        c.topicIds && c.topicIds.includes(topic.id)
+      );
+      return {
+        topic,
+        items,
+        count: items.length
+      };
     });
+  }, [rawTopics, rawContent, filterType]);
 
-    const svg = d3.select(containerRef.current)
-      .append("svg")
-      .attr("width", width)
-      .attr("height", height)
-      .attr("viewBox", [0, 0, width, height])
-      .attr("style", "max-width: 100%; height: auto;");
-
-    // Add subtle grid background pattern
-    const defs = svg.append("defs");
-    const pattern = defs.append("pattern")
-      .attr("id", "matrix-grid")
-      .attr("width", 30)
-      .attr("height", 30)
-      .attr("patternUnits", "userSpaceOnUse");
-    pattern.append("circle")
-      .attr("cx", 2)
-      .attr("cy", 2)
-      .attr("r", 1)
-      .attr("fill", "#e2e8f0");
-
-    svg.append("rect")
-      .attr("width", width)
-      .attr("height", height)
-      .attr("fill", "url(#matrix-grid)");
-
-    // Zoom container
-    const g = svg.append("g");
-
-    const zoom = d3.zoom()
-      .scaleExtent([0.5, 3])
-      .on("zoom", (event) => {
-        g.attr("transform", event.transform);
-      });
-
-    svg.call(zoom as any);
-
-    const simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links).id((d: any) => d.id).distance(isExpanded ? 100 : 70))
-      .force("charge", d3.forceManyBody().strength(isExpanded ? -240 : -160))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collide", d3.forceCollide().radius((d: any) => d.radius + (isExpanded ? 14 : 8)));
-
-    const link = g.append("g")
-      .attr("stroke", "#cbd5e1")
-      .attr("stroke-opacity", 0.6)
-      .selectAll("line")
-      .data(links)
-      .join("line")
-      .attr("stroke-width", 1.5)
-      .attr("stroke-dasharray", "3,3");
-
-    const node = g.append("g")
-      .selectAll("g")
-      .data(nodes)
-      .join("g")
-      .attr("class", "cursor-pointer")
-      .call(d3.drag()
-        .on("start", dragstarted)
-        .on("drag", dragged)
-        .on("end", dragended) as any);
-
-    // Topic nodes (Clean neutral background with subtle border)
-    node.filter((d: any) => d.group === 'topic')
-      .append("circle")
-      .attr("r", (d: any) => d.radius)
-      .attr("fill", "#f8fafc")
-      .attr("stroke", "#64748b")
-      .attr("stroke-width", 2)
-      .attr("stroke-dasharray", "4,2");
-
-    // Content nodes with type colors
-    node.filter((d: any) => d.group === 'content')
-      .append("circle")
-      .attr("r", (d: any) => d.radius)
-      .attr("fill", (d: any) => {
-        if (d.type === 'COURSE') return '#10b981';
-        if (d.type === 'ARTICLE') return '#3b82f6';
-        if (d.type === 'LESSON') return '#f59e0b';
-        return '#8b5cf6';
-      })
-      .attr("stroke", "#ffffff")
-      .attr("stroke-width", 2.5);
-
-    // Topic labels inside node
-    node.filter((d: any) => d.group === 'topic')
-      .append("text")
-      .attr("dy", 4)
-      .attr("text-anchor", "middle")
-      .text((d: any) => d.title.length > 10 ? d.title.substring(0, 9) + '…' : d.title)
-      .attr("font-size", isExpanded ? "11px" : "10px")
-      .attr("font-weight", "600")
-      .attr("fill", "#334155")
-      .attr("pointer-events", "none");
-
-    // Click handler -> Selects node for inspection
-    node.on("click", (event, d: any) => {
-      event.stopPropagation();
-      setSelectedNode(d);
-    });
-
-    node.on("mouseover", function() {
-      d3.select(this).select("circle")
-        .attr("stroke", "#0f172a")
-        .attr("stroke-width", 3.5);
-    }).on("mouseout", function(e, d: any) {
-      d3.select(this).select("circle")
-        .attr("stroke", d.group === 'topic' ? "#64748b" : "#ffffff")
-        .attr("stroke-width", d.group === 'topic' ? 2 : 2.5);
-    });
-
-    svg.on("click", () => {
-      setSelectedNode(null);
-    });
-
-    simulation.on("tick", () => {
-      link
-        .attr("x1", (d: any) => d.source.x)
-        .attr("y1", (d: any) => d.source.y)
-        .attr("x2", (d: any) => d.target.x)
-        .attr("y2", (d: any) => d.target.y);
-
-      node.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
-    });
-
-    function dragstarted(event: any) {
-      if (!event.active) simulation.alphaTarget(0.3).restart();
-      event.subject.fx = event.subject.x;
-      event.subject.fy = event.subject.y;
+  const getTypeIcon = (type: ContentType) => {
+    switch (type) {
+      case 'COURSE': return BookOpen;
+      case 'LESSON': return GraduationCap;
+      case 'ARTICLE': return FileText;
+      case 'NOTE': return StickyNote;
+      default: return LayoutTemplate;
     }
+  };
 
-    function dragged(event: any) {
-      event.subject.fx = event.x;
-      event.subject.fy = event.y;
+  const getTypeBadgeStyle = (type: ContentType) => {
+    switch (type) {
+      case 'COURSE': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'LESSON': return 'bg-amber-50 text-amber-700 border-amber-200';
+      case 'ARTICLE': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'NOTE': return 'bg-purple-50 text-purple-700 border-purple-200';
+      default: return 'bg-stone-50 text-stone-700 border-stone-200';
     }
-
-    function dragended(event: any) {
-      if (!event.active) simulation.alphaTarget(0);
-      event.subject.fx = null;
-      event.subject.fy = null;
-    }
-
-    return () => {
-      simulation.stop();
-    };
-  }, [rawContent, rawTopics, isExpanded, filterType]);
+  };
 
   return (
     <div className={cn(
-      "w-full bg-white rounded-2xl border border-stone-200 overflow-hidden relative shadow-sm transition-all duration-300",
-      isExpanded && "fixed inset-4 z-50 shadow-2xl border-stone-400 bg-[#FCFCFD]"
+      "bg-white rounded-3xl border border-stone-200/90 shadow-2xs transition-all overflow-hidden flex flex-col",
+      isExpanded ? "fixed inset-4 z-50 shadow-2xl" : "relative"
     )}>
-      {/* Matrix Header Controls */}
-      <div className="p-4 border-b border-stone-100 flex flex-wrap items-center justify-between gap-3 bg-white/90 backdrop-blur-sm z-10 relative">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm">
-            <Sparkles className="w-4 h-4" />
+      
+      {/* Top Header & Filter Controls */}
+      <div className="p-4 sm:p-6 border-b border-stone-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-stone-50/40">
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-stone-900 text-white flex items-center justify-center font-bold">
+              <Network className="w-4 h-4 text-emerald-400" />
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+              Матриця знань та зв&apos;язків
+            </h2>
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-stone-900 tracking-tight">Матриця Знань</h3>
-            <p className="text-xs text-stone-500">Інтерактивний синтез та зв&apos;язки матеріалів</p>
-          </div>
+          <p className="text-xs text-stone-500 mt-1">
+            Структурована архітектура предметних областей, залежностей та контенту
+          </p>
         </div>
 
-        {/* Filter Badges */}
-        <div className="flex items-center gap-1.5 overflow-x-auto text-xs">
-          {['ALL', 'COURSE', 'ARTICLE', 'LESSON', 'NOTE'].map((t) => (
+        {/* Action Controls */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* View mode toggle */}
+          <div className="bg-stone-100 p-1 rounded-xl flex items-center gap-1">
             <button
-              key={t}
-              onClick={() => setFilterType(t)}
+              onClick={() => setActiveTab('matrix')}
               className={cn(
-                "px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap",
-                filterType === t 
-                  ? "bg-stone-900 text-white shadow-sm" 
-                  : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+                activeTab === 'matrix' 
+                  ? "bg-white text-stone-900 shadow-2xs" 
+                  : "text-stone-600 hover:text-stone-900"
               )}
             >
-              {t === 'ALL' ? 'Всі зв’язки' : TYPE_TRANSLATIONS[t as ContentType] || t}
+              <Layers className="w-3.5 h-3.5" />
+              <span>Блоки & Домени</span>
             </button>
-          ))}
-        </div>
-
-        {/* Expand / Minimize Toggle */}
-        <Button 
-          variant="secondary" 
-          size="sm" 
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="gap-1.5 text-xs text-stone-700 hover:bg-stone-100"
-        >
-          {isExpanded ? (
-            <>
-              <Minimize2 className="w-3.5 h-3.5" />
-              <span>Згорнути</span>
-            </>
-          ) : (
-            <>
-              <Maximize2 className="w-3.5 h-3.5" />
-              <span>Розгорнути матрицю</span>
-            </>
-          )}
-        </Button>
-      </div>
-
-      {/* SVG Canvas Container */}
-      <div 
-        ref={containerRef} 
-        className={cn(
-          "w-full cursor-grab active:cursor-grabbing relative",
-          isExpanded ? "h-[calc(100%-65px)] min-h-[500px]" : "h-[380px]"
-        )} 
-      />
-
-      {/* Node Inspector Drawer */}
-      {selectedNode && (
-        <div className="absolute bottom-4 right-4 z-20 w-80 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-stone-200 p-4 animate-in fade-in slide-in-from-bottom-3">
-          <div className="flex items-start justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2">
-              <div className={cn(
-                "w-3 h-3 rounded-full",
-                selectedNode.group === 'topic' ? "bg-stone-400" :
-                selectedNode.type === 'COURSE' ? "bg-emerald-500" :
-                selectedNode.type === 'ARTICLE' ? "bg-blue-500" : "bg-purple-500"
-              )} />
-              <span className="text-xs font-bold text-stone-400 uppercase tracking-wider">
-                {selectedNode.group === 'topic' ? 'Тема' : TYPE_TRANSLATIONS[selectedNode.type as ContentType] || 'Матеріал'}
-              </span>
-            </div>
-            <button onClick={() => setSelectedNode(null)} className="text-stone-400 hover:text-stone-700 p-1">
-              <X className="w-4 h-4" />
+            <button
+              onClick={() => setActiveTab('schema')}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+                activeTab === 'schema' 
+                  ? "bg-white text-stone-900 shadow-2xs" 
+                  : "text-stone-600 hover:text-stone-900"
+              )}
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Карта зв&apos;язків</span>
             </button>
           </div>
 
-          <h4 className="font-bold text-stone-900 text-sm mb-2">{selectedNode.title}</h4>
-          
-          {selectedNode.group === 'content' && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs text-stone-500">
-                <span>Зрілість матеріалу:</span>
-                <span className="font-semibold text-emerald-600">{selectedNode.maturity || 0}%</span>
-              </div>
-              <Button 
-                onClick={() => router.push(`/content/${selectedNode.id}`)}
-                className="w-full gap-2 text-xs py-2 bg-stone-900 hover:bg-stone-800 text-white"
+          {/* Type Filter Pills */}
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+            {['ALL', 'COURSE', 'LESSON', 'ARTICLE', 'NOTE'].map((type) => (
+              <button
+                key={type}
+                onClick={() => setFilterType(type)}
+                className={cn(
+                  "px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap",
+                  filterType === type 
+                    ? "bg-stone-900 text-white font-semibold" 
+                    : "bg-white border border-stone-200 text-stone-600 hover:bg-stone-50"
+                )}
               >
-                <span>Відкрити матеріал</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          )}
+                {type === 'ALL' ? 'Всі' : TYPE_TRANSLATIONS[type as ContentType]}
+              </button>
+            ))}
+          </div>
 
-          {selectedNode.group === 'topic' && (
-            <p className="text-xs text-stone-500">
-              Ця тема об&apos;єднує пов&apos;язані нотатки, статті та навчальні матеріали.
-            </p>
-          )}
+          {/* Fullscreen Expand toggle */}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="p-2 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-xl transition-colors hidden sm:flex"
+            title={isExpanded ? "Згорнути" : "На весь екран"}
+          >
+            {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="p-4 sm:p-6 overflow-y-auto max-h-[600px] flex-1">
+        {activeTab === 'matrix' ? (
+          /* TAB 1: Structured Domain Grid */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            {topicGroups.map(({ topic, items }) => (
+              <div
+                key={topic.id}
+                className={cn(
+                  "rounded-2xl border transition-all duration-150 p-4 sm:p-5 flex flex-col justify-between space-y-4",
+                  selectedTopicId === topic.id 
+                    ? "border-emerald-500 bg-emerald-50/20 shadow-xs ring-1 ring-emerald-500" 
+                    : "border-stone-200/90 bg-white hover:border-stone-300 hover:shadow-2xs"
+                )}
+              >
+                {/* Topic Header Block */}
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center font-bold text-xs">
+                        {topic.name.charAt(0)}
+                      </div>
+                      <h3 className="font-bold text-stone-900 text-sm sm:text-base leading-tight">
+                        {topic.name}
+                      </h3>
+                    </div>
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 font-semibold shrink-0">
+                      {items.length} {items.length === 1 ? 'об\'єкт' : 'об\'єктів'}
+                    </span>
+                  </div>
+                  {topic.description && (
+                    <p className="text-xs text-stone-500 mt-2 line-clamp-2 leading-relaxed">
+                      {topic.description}
+                    </p>
+                  )}
+                </div>
+
+                {/* Sub-items in this topic */}
+                <div className="space-y-1.5 pt-2 border-t border-stone-100">
+                  {items.length === 0 ? (
+                    <div className="text-[11px] text-stone-400 italic py-2">
+                      Немає матеріалів з обраним фільтром
+                    </div>
+                  ) : (
+                    items.map(item => {
+                      const Icon = getTypeIcon(item.type);
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => setSelectedContentItem(item)}
+                          className="group/item flex items-center justify-between p-2 rounded-xl border border-stone-100 hover:border-emerald-200 hover:bg-emerald-50/40 transition-all cursor-pointer text-left"
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className={cn("p-1 rounded-md border text-[10px] shrink-0", getTypeBadgeStyle(item.type))}>
+                              <Icon className="w-3 h-3" />
+                            </span>
+                            <span className="text-xs font-medium text-stone-800 group-hover/item:text-emerald-900 truncate">
+                              {item.title}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-stone-400 font-mono shrink-0 ml-2">
+                            {item.maturity}%
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Topic quick link */}
+                <Link
+                  href={`/topics`}
+                  className="text-xs font-semibold text-stone-500 hover:text-stone-900 flex items-center justify-between pt-1 group"
+                >
+                  <span>Деталі теми</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                </Link>
+              </div>
+            ))}
+          </div>
+        ) : (
+          /* TAB 2: Clean SVG Architecture Visualizer */
+          <div className="space-y-4">
+            <div className="p-3 bg-stone-50 rounded-xl border border-stone-200/70 text-xs text-stone-600 flex items-center justify-between">
+              <span>Клікніть на будь-який елемент для перегляду зв&apos;язків та контексту</span>
+              <span className="font-semibold text-stone-800">Всього вузлів: {filteredContent.length + rawTopics.length}</span>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {topicGroups.map(({ topic, items }) => (
+                <div key={topic.id} className="p-4 rounded-2xl border border-stone-200 bg-[#FAFAFA] space-y-3">
+                  {/* Parent Hub Node */}
+                  <div className="p-3 rounded-xl bg-white border border-stone-300 shadow-2xs flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white font-bold flex items-center justify-center text-xs shadow-xs">
+                        {topic.name.charAt(0)}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-stone-900">{topic.name}</div>
+                        <div className="text-[10px] text-stone-400">Предметний домен</div>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-stone-100 text-stone-700">
+                      {items.length} зв&apos;язків
+                    </span>
+                  </div>
+
+                  {/* Connected child nodes */}
+                  <div className="pl-6 space-y-2 border-l-2 border-dashed border-stone-300 ml-4 py-1">
+                    {items.map(item => {
+                      const Icon = getTypeIcon(item.type);
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => setSelectedContentItem(item)}
+                          className="p-2.5 rounded-xl bg-white border border-stone-200 hover:border-emerald-400 shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center justify-between gap-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={cn("p-1 rounded-md border text-[10px]", getTypeBadgeStyle(item.type))}>
+                              <Icon className="w-3 h-3" />
+                            </span>
+                            <span className="text-xs font-medium text-stone-800 truncate">{item.title}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-600">
+                              {item.state === 'READY' ? 'Готово' : 'Чернетка'}
+                            </span>
+                            <ExternalLink className="w-3 h-3 text-stone-400" />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Selected Item Drawer / Detail Modal */}
+      {selectedContentItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl border border-stone-200 shadow-2xl p-6 max-w-lg w-full space-y-4 animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className={cn("px-2.5 py-1 rounded-lg border text-xs font-bold", getTypeBadgeStyle(selectedContentItem.type))}>
+                  {TYPE_TRANSLATIONS[selectedContentItem.type]}
+                </span>
+                <span className="text-xs text-stone-500 font-medium">
+                  {STATE_TRANSLATIONS[selectedContentItem.state]}
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedContentItem(null)}
+                className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Title & Summary */}
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-bold text-stone-900 leading-snug">
+                {selectedContentItem.title}
+              </h3>
+              <p className="text-xs text-stone-500 leading-relaxed">
+                {selectedContentItem.summary || 'Опис відсутній. Перегляньте повний вміст матеріалу для деталей.'}
+              </p>
+            </div>
+
+            {/* Metadata Badges */}
+            <div className="p-3 bg-stone-50 rounded-2xl border border-stone-100 grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <span className="text-stone-400 text-[10px] uppercase font-bold block">Зрілість знання</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="flex-1 bg-stone-200 h-2 rounded-full overflow-hidden">
+                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${selectedContentItem.maturity}%` }} />
+                  </div>
+                  <span className="font-mono font-bold text-stone-700">{selectedContentItem.maturity}%</span>
+                </div>
+              </div>
+              <div>
+                <span className="text-stone-400 text-[10px] uppercase font-bold block">Видимість</span>
+                <span className="font-semibold text-stone-800 mt-1 block">
+                  {selectedContentItem.visibility === 'PUBLIC' ? 'Публічний' : 'Внутрішній'}
+                </span>
+              </div>
+            </div>
+
+            {/* Connected Topics */}
+            {selectedContentItem.topicIds && selectedContentItem.topicIds.length > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                  Пов&apos;язані предметні теми:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedContentItem.topicIds.map(tId => {
+                    const t = rawTopics.find(top => top.id === tId);
+                    return (
+                      <span key={tId} className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
+                        {t?.name || tId}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2 border-t border-stone-100">
+              <Link
+                href={`/content/${selectedContentItem.id}`}
+                className="flex-1"
+                onClick={() => setSelectedContentItem(null)}
+              >
+                <Button className="w-full bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs shadow-xs">
+                  Читати матеріал
+                </Button>
+              </Link>
+              <Link
+                href={`/ai?prompt=${encodeURIComponent(`Поясни детально та надай практичний приклад для матеріалу: "${selectedContentItem.title}"`)}`}
+                className="flex-1"
+                onClick={() => setSelectedContentItem(null)}
+              >
+                <Button variant="secondary" className="w-full border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl text-xs gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>AI Аналіз</span>
+                </Button>
+              </Link>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Legend Footer */}
-      <div className="absolute bottom-3 left-4 flex items-center gap-3 text-[10px] font-medium text-stone-500 bg-white/80 backdrop-blur-xs px-3 py-1 rounded-full border border-stone-200/60 pointer-events-none">
-        <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"/> Курси</div>
-        <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"/> Статті</div>
-        <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-500"/> Нотатки</div>
-        <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-stone-400"/> Теми</div>
-      </div>
     </div>
   );
 }

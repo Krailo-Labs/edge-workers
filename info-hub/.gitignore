@@ -1,7 +1,13 @@
 node_modules/
 .next/
+.vercel/
 coverage/
 .DS_Store
 *.log
 .env*
 !.env.example
+package-lock.json
+*.lock
+*.lockb
+bun.lock*
+pnpm-lock.yaml

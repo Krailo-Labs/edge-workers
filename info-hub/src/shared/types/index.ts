@@ -24,6 +24,9 @@ export interface ContentUnit {
   topicIds: string[];
   purpose: Purpose;
   visibility: Visibility;
+  summary?: string;
+  authorId?: string;
+  authorName?: string;
   blocks: Block[];
   relations: string[];
   modules?: CourseModule[]; // Specific for courses
@@ -35,6 +38,7 @@ export interface Topic {
   id: string;
   name: string;
   parentId: string | null;
+  description?: string;
 }
 
 export interface Comment {
