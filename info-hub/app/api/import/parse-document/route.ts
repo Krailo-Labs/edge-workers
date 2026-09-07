@@ -1,10 +1,4 @@
-if (typeof globalThis.DOMMatrix === 'undefined') {
-  (globalThis as any).DOMMatrix = class DOMMatrix {};
-}
-
 import { NextRequest, NextResponse } from 'next/server';
-import { PDFParse } from 'pdf-parse';
-const mammoth = require('mammoth');
 import { formatPdfExtractedText, extractDocumentTitle, splitDocumentIntoChapters } from '@/shared/utils/document-parser';
 import { cleanRawUnicodeAndEntities } from '@/shared/utils/course-parser';
 
@@ -28,39 +22,25 @@ export async function POST(req: NextRequest) {
     let pageCount = 1;
     let format = 'text';
 
-    // 1. PDF Document
+    // 1. PDF Document (Тимчасово вимкнено для сумісності з Edge)
     if (lowerName.endsWith('.pdf')) {
-      format = 'pdf';
-      try {
-        const parser = new PDFParse({ data: buffer });
-        const result = await parser.getText();
-        pageCount = result.total || result.pages?.length || 1;
-        const rawPdfText = result.pages?.map((p: { text: string }) => p.text).join('\n\n') || result.text || '';
-        await parser.destroy();
-
-        // Format PDF text cleanly without altering words ("Форматувало пдф але не міняло текст")
-        extractedMarkdown = formatPdfExtractedText(rawPdfText);
-      } catch (pdfErr: any) {
-        console.error('PDF parsing error:', pdfErr);
-        return NextResponse.json({ 
-          error: `Помилка читання PDF файлу: ${pdfErr.message || 'Не вдалося витягти текст.'}` 
-        }, { status: 422 });
-      }
+      return NextResponse.json({ 
+        error: 'Парсинг PDF тимчасово недоступний.' 
+      }, { status: 422 });
     }
     // 2. Word DOCX Document
     else if (lowerName.endsWith('.docx') || lowerName.endsWith('.doc')) {
       format = 'docx';
       try {
+        const mammoth = await import('mammoth');
         const mammothResult = await mammoth.convertToMarkdown({ buffer });
         extractedMarkdown = mammothResult.value || '';
 
-        // If markdown is empty, fallback to raw text extraction
         if (!extractedMarkdown.trim()) {
           const rawResult = await mammoth.extractRawText({ buffer });
           extractedMarkdown = formatPdfExtractedText(rawResult.value || '');
         }
       } catch (docErr: any) {
-        console.error('DOCX parsing error:', docErr);
         return NextResponse.json({ 
           error: `Помилка читання Word файлу: ${docErr.message || 'Не вдалося обробити DOCX.'}` 
         }, { status: 422 });
@@ -99,7 +79,6 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('Document parsing server error:', error);
     return NextResponse.json({ 
       error: `Помилка сервера при обробці документа: ${error.message}` 
     }, { status: 500 });
