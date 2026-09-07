@@ -4,6 +4,8 @@ const mammoth = require('mammoth');
 import { formatPdfExtractedText, extractDocumentTitle, splitDocumentIntoChapters } from '@/shared/utils/document-parser';
 import { cleanRawUnicodeAndEntities } from '@/shared/utils/course-parser';
 
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
