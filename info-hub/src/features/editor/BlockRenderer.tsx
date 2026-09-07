@@ -107,32 +107,81 @@ export function BlockRenderer({ block }: { block: Block }) {
         );
       }
 
-      // 2. Ключові поняття / Concepts Chips
+      // 2. Ключові поняття / Concepts Chips & Definitions
       if (type === 'concepts') {
-        const concepts: string[] = block.content?.concepts || [];
+        const parsedConcepts: { term: string; definition?: string }[] = block.content?.parsedConcepts || [];
+        const rawConcepts: string[] = block.content?.concepts || [];
+
+        // Items that actually have definitions
+        const definitionsList = parsedConcepts.filter(c => !!c.definition && c.definition.trim().length > 0);
+        // Concise standalone terms (keywords/tags)
+        const tagsList = parsedConcepts
+          .filter(c => !c.definition && c.term.trim().length > 0 && c.term.length <= 40)
+          .map(c => c.term);
+        // Any full sentence items that might have slipped in
+        const sentenceItems = parsedConcepts
+          .filter(c => !c.definition && c.term.trim().length > 40)
+          .map(c => c.term);
+
         return (
           <div className="bg-stone-50/90 border border-stone-200 rounded-2xl p-4 sm:p-5 mb-6 shadow-2xs">
-            <div className="flex items-center gap-2 mb-3 text-stone-800 font-bold text-xs sm:text-sm uppercase tracking-wider">
+            <div className="flex items-center gap-2 mb-3.5 text-stone-800 font-bold text-xs sm:text-sm uppercase tracking-wider">
               <div className="p-1 rounded-lg bg-stone-200 text-stone-700">
                 <Tags className="w-4 h-4" />
               </div>
               <span>{title || 'Ключові поняття'}</span>
             </div>
-            {concepts.length > 0 ? (
-              <div className="flex flex-wrap gap-2 sm:pl-7">
-                {concepts.map((concept, cIdx) => (
+
+            {/* Definitions List */}
+            {definitionsList.length > 0 && (
+              <div className="space-y-2.5 sm:pl-7">
+                {definitionsList.map((item, cIdx) => (
+                  <div
+                    key={cIdx}
+                    className="flex flex-col sm:flex-row sm:items-start gap-2.5 p-3 sm:p-3.5 rounded-xl bg-white border border-stone-200/90 shadow-2xs hover:border-emerald-300 transition-colors"
+                  >
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-900 text-xs sm:text-sm font-bold border border-emerald-200/80 shrink-0 self-start">
+                      <span className="text-emerald-600 font-extrabold">#</span>
+                      <span>{item.term}</span>
+                    </div>
+                    <div className="text-xs sm:text-sm text-stone-700 font-medium leading-relaxed flex-1 sm:pt-0.5">
+                      <MarkdownRenderer content={item.definition!} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Standalone Tags */}
+            {(tagsList.length > 0 || (definitionsList.length === 0 && rawConcepts.length > 0)) && (
+              <div className={cn("flex flex-wrap gap-2 sm:pl-7", definitionsList.length > 0 && "mt-3 pt-3 border-t border-stone-200/60")}>
+                {(tagsList.length > 0 ? tagsList : rawConcepts).map((concept, cIdx) => (
                   <span
                     key={cIdx}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-stone-200/90 text-stone-800 text-xs sm:text-sm font-semibold shadow-2xs hover:border-emerald-300 hover:bg-emerald-50/40 transition-colors"
                   >
                     <span className="text-emerald-600 font-bold">#</span>
-                    <span>{concept}</span>
+                    <span>{concept.replace(/^#+\s*/, '')}</span>
                   </span>
                 ))}
               </div>
-            ) : (
+            )}
+
+            {/* Any sentence items rendered as readable text */}
+            {sentenceItems.length > 0 && (
+              <div className="space-y-2 sm:pl-7 mt-3">
+                {sentenceItems.map((sentence, sIdx) => (
+                  <p key={sIdx} className="text-xs sm:text-sm text-stone-700 leading-relaxed">
+                    {sentence}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {/* Fallback text */}
+            {definitionsList.length === 0 && tagsList.length === 0 && rawConcepts.length === 0 && block.content?.text && (
               <div className="text-stone-700 text-sm sm:pl-7">
-                <MarkdownRenderer content={block.content?.text || ''} />
+                <MarkdownRenderer content={block.content.text} />
               </div>
             )}
           </div>

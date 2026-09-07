@@ -9,3 +9,10 @@ database_id = "3cce8adc-7627-406e-8565-3402e8928477"
 
 [ai]
 binding = "AI"
+
+[[r2_buckets]]
+binding = "info_hub"
+bucket_name = "info-hub"
+
+[vars]
+NEXT_PUBLIC_R2_CDN_URL = "https://cdn.info-hub.krailo.sh"

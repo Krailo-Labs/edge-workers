@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation';
 import { ContentUnit, ContentType, ContentState, Purpose, Visibility, Block, CourseModule } from '@/shared/types';
 import { CustomDropdown } from '@/shared/ui/components/CustomDropdown';
 import { BlockRenderer } from '@/features/editor/BlockRenderer';
-import { parseStructuredLessonMarkdown, extractLessonMetadata } from '@/shared/utils/course-parser';
+import { parseStructuredLessonMarkdown, extractLessonMetadata, cleanRawUnicodeAndEntities } from '@/shared/utils/course-parser';
 import { cn } from '@/shared/utils';
 
 interface ParsedLesson {
@@ -88,39 +88,74 @@ export default function ImportPage() {
       // Scan all entries
       const entries = Object.keys(zipData.files);
       
-      // First pass: images and SVG assets
+      // First pass: images and diagram assets (.png, .jpg, .jpeg, .svg, .webp, .gif, .ico, .bmp, .avif)
       for (const entryPath of entries) {
         const zipEntry = zipData.files[entryPath];
         if (zipEntry.dir) continue;
 
         const lower = entryPath.toLowerCase();
 
-        // Image files & SVG diagrams
-        if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.svg') || lower.endsWith('.webp')) {
+        // Image files & GIF / SVG diagrams
+        if (
+          lower.endsWith('.png') ||
+          lower.endsWith('.jpg') ||
+          lower.endsWith('.jpeg') ||
+          lower.endsWith('.svg') ||
+          lower.endsWith('.webp') ||
+          lower.endsWith('.gif') ||
+          lower.endsWith('.ico') ||
+          lower.endsWith('.bmp') ||
+          lower.endsWith('.avif')
+        ) {
           const base64 = await zipEntry.async('base64');
-          const ext = lower.split('.').pop();
-          const mime = ext === 'svg' ? 'image/svg+xml' : `image/${ext}`;
+          const ext = lower.split('.').pop() || 'png';
+          const mime =
+            ext === 'svg'
+              ? 'image/svg+xml'
+              : ext === 'gif'
+              ? 'image/gif'
+              : ext === 'webp'
+              ? 'image/webp'
+              : ext === 'png'
+              ? 'image/png'
+              : ext === 'avif'
+              ? 'image/avif'
+              : 'image/jpeg';
           const dataUrl = `data:${mime};base64,${base64}`;
-          
+
+          // Index all variations for foolproof matching
           imageMap[entryPath] = dataUrl;
-          imageMap[entryPath.replace(/^[^/]+\//, '')] = dataUrl; // strip root folder
+          imageMap[lower] = dataUrl;
+
+          const stripped = entryPath.replace(/^[^/]+\//, '');
+          imageMap[stripped] = dataUrl;
+          imageMap[stripped.toLowerCase()] = dataUrl;
+          imageMap[`./${stripped}`] = dataUrl;
+
           const filename = entryPath.split('/').pop() || '';
           imageMap[filename] = dataUrl;
-          const stem = filename.replace(/\.(png|jpg|jpeg|svg|webp)$/i, '');
+          imageMap[filename.toLowerCase()] = dataUrl;
+          imageMap[`./${filename}`] = dataUrl;
+          imageMap[`./${filename.toLowerCase()}`] = dataUrl;
+
+          const stem = filename.replace(/\.(png|jpg|jpeg|svg|webp|gif|ico|bmp|avif)$/i, '');
           imageMap[stem] = dataUrl;
+          imageMap[stem.toLowerCase()] = dataUrl;
         }
 
         // Manifest & Index files
         if (lower.endsWith('content-index.json') || lower.endsWith('manifest.json') || lower.endsWith('course.json')) {
           try {
-            const raw = await zipEntry.async('text');
+            const rawUint = await zipEntry.async('uint8array');
+            const raw = cleanRawUnicodeAndEntities(new TextDecoder('utf-8', { fatal: false, ignoreBOM: true }).decode(rawUint));
             manifestData = JSON.parse(raw);
           } catch (e) {
             console.warn('Manifest json parse error:', e);
           }
         } else if (lower.endsWith('manifest.yaml') || lower.endsWith('manifest.yml')) {
           try {
-            const raw = await zipEntry.async('text');
+            const rawUint = await zipEntry.async('uint8array');
+            const raw = cleanRawUnicodeAndEntities(new TextDecoder('utf-8', { fatal: false, ignoreBOM: true }).decode(rawUint));
             manifestData = yaml.parse(raw);
           } catch (e) {
             console.warn('Manifest yaml parse error:', e);
@@ -134,15 +169,36 @@ export default function ImportPage() {
         if (zipEntry.dir) continue;
 
         const lower = entryPath.toLowerCase();
-        if (lower.endsWith('course.md')) {
-          courseOverviewText = await zipEntry.async('text');
+        const filename = entryPath.split('/').pop() || entryPath;
+        const lowerFilename = filename.toLowerCase();
+
+        // Check if it's course overview text
+        if (lowerFilename === 'course.md' || lowerFilename === 'about.md' || lowerFilename === 'overview.md') {
+          const rawUint = await zipEntry.async('uint8array');
+          courseOverviewText = cleanRawUnicodeAndEntities(new TextDecoder('utf-8', { fatal: false, ignoreBOM: true }).decode(rawUint));
+          continue;
+        }
+
+        // Skip internal/service files that shouldn't be added as lessons
+        if (
+          lowerFilename.startsWith('manifest.') ||
+          lowerFilename === 'readme.md' ||
+          lowerFilename === 'package_info.md' ||
+          lowerFilename === 'import_notes.md' ||
+          lowerFilename === 'course-rules.md' ||
+          lowerFilename === 'rules.md' ||
+          lowerFilename === '.ds_store' ||
+          lowerFilename.startsWith('.')
+        ) {
+          continue;
         }
 
         if (lower.endsWith('.md') || lower.endsWith('.markdown') || lower.endsWith('.txt')) {
-          const content = await zipEntry.async('text');
+          const rawUint = await zipEntry.async('uint8array');
+          const content = cleanRawUnicodeAndEntities(new TextDecoder('utf-8', { fatal: false, ignoreBOM: true }).decode(rawUint));
           textFiles.push({
             path: entryPath,
-            name: entryPath.split('/').pop() || entryPath,
+            name: filename,
             content
           });
         }
@@ -156,9 +212,10 @@ export default function ImportPage() {
         const moduleMap: Record<string, ParsedLesson[]> = {};
         const standaloneLessons: ParsedLesson[] = [];
 
-        textFiles.forEach((f, idx) => {
-          if (f.name.toLowerCase() === 'course.md' || f.name.toLowerCase().startsWith('manifest.')) return;
+        // Sort files alphabetically so lesson-01 comes before lesson-02
+        textFiles.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true, sensitivity: 'base' }));
 
+        textFiles.forEach((f, idx) => {
           const parsed = parseStructuredLessonMarkdown(f.content, imageMap, f.name.replace(/\.[^/.]+$/, ''));
           const segments = f.path.split('/');
           const folder = segments.length > 1 ? segments[segments.length - 2] : null;
@@ -173,7 +230,7 @@ export default function ImportPage() {
             blocks: parsed.blocks
           };
 
-          if (folder) {
+          if (folder && folder !== '.' && folder !== 'modules' && folder !== 'lessons') {
             if (!moduleMap[folder]) moduleMap[folder] = [];
             moduleMap[folder].push(lessonItem);
           } else {
@@ -184,11 +241,39 @@ export default function ImportPage() {
         // Build modules array
         const modules: ParsedModule[] = [];
 
-        Object.keys(moduleMap).forEach((modName, mIdx) => {
+        // Check if manifest defines modules list with titles & metadata
+        const manifestModulesList: any[] = Array.isArray(manifestData?.modules)
+          ? manifestData.modules
+          : manifestData?.modules && typeof manifestData.modules === 'object'
+          ? Object.values(manifestData.modules)
+          : [];
+
+        // Process folders according to manifest order or sorted keys
+        const folderKeys = Object.keys(moduleMap).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+        folderKeys.forEach((modFolder, mIdx) => {
+          // Check if manifest provides specific title for this module
+          const matchedManifestMod = manifestModulesList.find(
+            (m: any) => m.id === modFolder || m.folder === modFolder || (m.title && modFolder.toLowerCase().includes(m.id?.toLowerCase()))
+          );
+
+          let displayTitle = matchedManifestMod?.title;
+          if (!displayTitle) {
+            // Clean module name: e.g. "module-01-math" -> "Модуль 1: Math"
+            const numMatch = modFolder.match(/module[_-]?0*(\d+)[_-]?(.*)/i);
+            if (numMatch) {
+              const num = numMatch[1];
+              const rest = numMatch[2].replace(/[-_]/g, ' ').trim();
+              displayTitle = `Модуль ${num}${rest ? `: ${rest}` : ''}`;
+            } else {
+              displayTitle = modFolder.replace(/^[0-9]+[-_]/, '').replace(/[-_]/g, ' ');
+            }
+          }
+
           modules.push({
-            id: `mod-${mIdx + 1}`,
-            title: modName.replace(/^[0-9]+[-_]/, '').replace(/[-_]/g, ' '),
-            lessons: moduleMap[modName]
+            id: matchedManifestMod?.id || `mod-${mIdx + 1}`,
+            title: displayTitle,
+            lessons: moduleMap[modFolder]
           });
         });
 
@@ -200,10 +285,12 @@ export default function ImportPage() {
           });
         }
 
-        // Determine title & meta
+        // Determine course title & meta
         const courseTitle = manifestData?.title || file.name.replace(/\.zip$/i, '').replace(/[-_]/g, ' ');
-        const courseDescription = manifestData?.description || (courseOverviewText ? courseOverviewText.slice(0, 300) : 'Навчальний курс імпортовано з пакету InfoHub.');
-        const topics = manifestData?.topics || ['Курси', 'Матеріали'];
+        const courseDescription =
+          manifestData?.description ||
+          (courseOverviewText ? courseOverviewText.slice(0, 300) : 'Навчальний курс імпортовано з пакету InfoHub.');
+        const topics = manifestData?.topics || ['Трейдинг', 'Фінанси', 'Математика'];
 
         setParsedData({
           title: courseTitle,
@@ -230,13 +317,119 @@ export default function ImportPage() {
     }
   };
 
+  // Helper to process PDF and DOCX Word documents
+  const processDocumentFile = async (file: File) => {
+    setIsProcessing(true);
+    const lower = file.name.toLowerCase();
+    const isPdf = lower.endsWith('.pdf');
+    const isDocx = lower.endsWith('.docx') || lower.endsWith('.doc');
+    setProcessingStatus(`Вилучення тексту з ${isPdf ? 'PDF' : isDocx ? 'Word (DOCX)' : 'документа'}...`);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/import/parse-document', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Не вдалося прочитати документ.');
+      }
+
+      const data = await res.json();
+      setProcessingStatus('Форматування тексту та структури матеріалу...');
+
+      const formattedMarkdown = data.markdown;
+      setRawText(formattedMarkdown);
+
+      const chapters: { title: string; markdown: string }[] = data.chapters || [];
+
+      if (chapters.length > 1) {
+        // Multi-chapter document structured as a full course
+        const lessons: ParsedLesson[] = chapters.map((ch, idx) => {
+          const parsed = parseStructuredLessonMarkdown(ch.markdown, {}, ch.title);
+          const uid = getUniqueId(`${idx}`);
+          return {
+            id: `lesson-${uid}`,
+            title: ch.title || parsed.title,
+            module: 'Модуль 1',
+            state: 'READY',
+            maturity: 90,
+            blocks: parsed.blocks
+          };
+        });
+
+        setParsedData({
+          title: data.title || file.name.replace(/\.[^.]+$/, ''),
+          type: 'COURSE',
+          purpose: 'TEACHING',
+          visibility: 'PUBLIC',
+          topics: ['Матеріали', 'Документи'],
+          description: `Імпортовано з ${file.name} (${data.stats?.wordCount || ''} слів). Повний текст збережено без скорочень.`,
+          modules: [
+            {
+              id: getUniqueId('mod'),
+              title: 'Розділи документа',
+              lessons
+            }
+          ],
+          totalFiles: lessons.length
+        });
+      } else {
+        // Single comprehensive article / guide
+        const parsed = parseStructuredLessonMarkdown(formattedMarkdown, {}, data.title);
+        const singleLesson: ParsedLesson = {
+          id: getUniqueId('lesson'),
+          title: data.title,
+          module: 'Основний матеріал',
+          state: 'READY',
+          maturity: 90,
+          blocks: parsed.blocks
+        };
+
+        setParsedData({
+          title: data.title,
+          type: targetType === 'COURSE' ? 'ARTICLE' : targetType,
+          purpose: 'TEACHING',
+          visibility: 'PUBLIC',
+          topics: ['Матеріали', 'Документи'],
+          description: `Імпортовано з ${file.name} (${data.stats?.wordCount || ''} слів). Оригінальний текст збережено повністю.`,
+          modules: [
+            {
+              id: getUniqueId('mod'),
+              title: 'Матеріал',
+              lessons: [singleLesson]
+            }
+          ],
+          totalFiles: 1
+        });
+      }
+
+      setSelectedModuleIdx(0);
+      setSelectedLessonIdx(0);
+      setStep(2);
+    } catch (err: any) {
+      console.error('Document import error:', err);
+      alert(err.message || 'Помилка обробки документа.');
+    } finally {
+      setIsProcessing(false);
+      setProcessingStatus('');
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const first = files[0];
-    if (first.name.toLowerCase().endsWith('.zip')) {
+    const lower = first.name.toLowerCase();
+    if (lower.endsWith('.zip')) {
       processZipFile(first);
+    } else if (lower.endsWith('.pdf') || lower.endsWith('.docx') || lower.endsWith('.doc')) {
+      processDocumentFile(first);
     } else {
       // Read text/markdown file
       const reader = new FileReader();
@@ -591,8 +784,11 @@ export default function ImportPage() {
                   setIsDragging(false);
                   if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                     const f = e.dataTransfer.files[0];
-                    if (f.name.toLowerCase().endsWith('.zip')) {
+                    const lower = f.name.toLowerCase();
+                    if (lower.endsWith('.zip')) {
                       processZipFile(f);
+                    } else if (lower.endsWith('.pdf') || lower.endsWith('.docx') || lower.endsWith('.doc')) {
+                      processDocumentFile(f);
                     } else {
                       handleFileChange({ target: { files: e.dataTransfer.files } } as any);
                     }
@@ -605,7 +801,7 @@ export default function ImportPage() {
                   ref={fileInputRef} 
                   className="hidden" 
                   multiple 
-                  accept=".zip,.md,.markdown,.json,.yaml,.yml,.txt"
+                  accept=".pdf,.docx,.doc,.zip,.md,.markdown,.json,.yaml,.yml,.txt"
                   onChange={handleFileChange}
                 />
 
@@ -613,16 +809,23 @@ export default function ImportPage() {
                   <UploadCloud className="w-8 h-8" />
                 </div>
 
+                <div className="flex flex-wrap items-center justify-center gap-2 mb-3">
+                  <span className="px-2.5 py-0.5 rounded-lg bg-rose-50 text-rose-700 text-[11px] font-bold border border-rose-200">PDF Документи</span>
+                  <span className="px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-[11px] font-bold border border-blue-200">Word (.docx)</span>
+                  <span className="px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200">ZIP-пакети</span>
+                  <span className="px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] font-bold border border-emerald-200">Markdown (.md)</span>
+                </div>
+
                 <h3 className="text-lg sm:text-xl font-bold text-stone-900 mb-1">
-                  Перетягніть ZIP-архів або Markdown файли сюди
+                  Перетягніть PDF, Word (DOCX) або ZIP-архів сюди
                 </h3>
-                <p className="text-stone-500 text-xs sm:text-sm max-w-md mx-auto mb-6">
-                  Автоматично розпізнає структуру модулів, файли <code>manifest.yaml</code> та вкладені зображення / діаграми.
+                <p className="text-stone-500 text-xs sm:text-sm max-w-lg mx-auto mb-6 leading-relaxed">
+                  Повністю зберігає весь оригінальний текст без скорочень чи спотворень, структурує глави та уроки без розривів рядків.
                 </p>
 
                 <Button size="md" className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs pointer-events-none">
-                  <FolderArchive className="w-4 h-4" />
-                  <span>Вибрати архів з комп’ютера</span>
+                  <UploadCloud className="w-4 h-4" />
+                  <span>Вибрати PDF, Word або ZIP</span>
                 </Button>
               </div>
 

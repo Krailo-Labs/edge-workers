@@ -11,6 +11,11 @@ export interface ExtractedLessonMetadata {
   evidence?: string;
 }
 
+export interface ParsedConcept {
+  term: string;
+  definition?: string;
+}
+
 export interface ParsedLessonResult {
   id: string;
   title: string;
@@ -42,6 +47,42 @@ export interface ParsedCourseResult {
 }
 
 /**
+ * Decodes stray unicode escapes (\u0430) and URL encoding if text was corrupted during transfer
+ */
+export function cleanRawUnicodeAndEntities(text: string): string {
+  if (!text) return '';
+  let s = text;
+
+  // Decode unicode escapes like \u0430, \u0456, \u0457, \u0454 etc.
+  if (/\\u[0-9a-fA-F]{4}/.test(s)) {
+    try {
+      s = s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    } catch {
+      // Ignore error
+    }
+  }
+
+  // Decode HTML entities like &quot;, &#39;, &amp;
+  s = s
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+
+  // Decode URL encoded Cyrillic like %D0%B0
+  try {
+    if (s.includes('%D0') || s.includes('%D1') || s.includes('%D2') || s.includes('%D3') || s.includes('%20')) {
+      s = decodeURIComponent(s);
+    }
+  } catch {
+    // Ignore error if it's not a valid URI component
+  }
+
+  return s;
+}
+
+/**
  * Normalizes raw metadata line or YAML frontmatter at start of markdown
  */
 export function extractLessonMetadata(rawText: string): {
@@ -49,7 +90,7 @@ export function extractLessonMetadata(rawText: string): {
   cleanBody: string;
 } {
   const metadata: ExtractedLessonMetadata = {};
-  let cleanBody = rawText.trim();
+  let cleanBody = cleanRawUnicodeAndEntities(rawText).trim();
 
   // 1. Check YAML frontmatter: --- \n ... \n ---
   if (cleanBody.startsWith('---')) {
@@ -69,13 +110,13 @@ export function extractLessonMetadata(rawText: string): {
           if (parsed.evidence) metadata.evidence = String(parsed.evidence);
         }
       } catch {
-        // Fallback to manual parsing
+        // Fallback
       }
     }
   }
 
   // 2. Check inline metadata header line:
-  // e.g. id: lesson-01-product type: lesson title: "Що таке..." module: module-01-foundation state: READY completeness: 98 evidence: SOURCE+EXTENDED
+  // e.g. id: lesson-01-contract type: lesson title: "Що таке..." module: module-01-math state: READY completeness: 98
   const inlineMatch = cleanBody.match(/^(id:\s*([^\s]+))?(\s*type:\s*([^\s]+))?(\s*title:\s*(?:"([^"]+)"|'([^']+)'|([^\n\r]+?)(?=\s+module:|\s+state:|\s+completeness:|\s+evidence:|\s*$|\n)))?(\s*module:\s*([^\s]+))?(\s*state:\s*([^\s]+))?(\s*completeness:\s*(\d+))?(\s*evidence:\s*([^\s]+))?/i);
 
   if (inlineMatch && (inlineMatch[1] || inlineMatch[3] || inlineMatch[4] || inlineMatch[9])) {
@@ -97,16 +138,135 @@ export function extractLessonMetadata(rawText: string): {
 }
 
 /**
- * Cleans concept items from formats like "**- term", "- term", "* term"
+ * Parses concept item into term and optional definition without debris (#, ###, *, 1.)
+ * Never splits on unspaced hyphens within words (e.g. "Нью-Йорк", "stop-loss").
  */
-function cleanConceptItem(line: string): string {
-  return line
-    .trim()
-    .replace(/^\*+\s*-\s*/, '')
-    .replace(/^-\s*\*+/, '')
-    .replace(/^[-*•]\s*/, '')
-    .replace(/\*+/g, '')
-    .trim();
+export function cleanConceptItem(line: string): ParsedConcept {
+  let clean = line.trim();
+
+  // Robustly strip leading heading markers and numbers repeatedly
+  let prev = '';
+  while (clean !== prev) {
+    prev = clean;
+    clean = clean.replace(/^#{1,6}\s*/, '');
+    clean = clean.replace(/^[-*•▪▫–—]\s*/, '');
+    clean = clean.replace(/^\d+[\.\)]\s*/, '');
+  }
+
+  // 1. Check if concept has bold term and definition: e.g. "**Payout:** 85% прибутку" or "**Contract** — фіксована угода"
+  const boldMatch = clean.match(/^\*\*([^*]+)\*\*[:\s—–]*(.*)$/);
+  if (boldMatch) {
+    const term = boldMatch[1].replace(/^#+\s*/, '').trim();
+    const definition = boldMatch[2].replace(/^[:—–-]\s*/, '').trim();
+    return { term, definition: definition || undefined };
+  }
+
+  // 2. Colon delimiter: "Payout: 85% прибутку" (term must be <= 45 chars and not a sentence)
+  const colonMatch = clean.match(/^([^:—–\n.!?]{2,45}):\s+(.+)$/);
+  if (colonMatch) {
+    const term = colonMatch[1].replace(/\*+/g, '').replace(/^#+\s*/, '').trim();
+    const definition = colonMatch[2].replace(/\*+/g, '').trim();
+    if (term.length > 0 && definition.length > 0) {
+      return { term, definition };
+    }
+  }
+
+  // 3. Em-dash or En-dash delimiter: "Payout — 85% прибутку" or "Contract – фіксована угода"
+  const dashMatch = clean.match(/^([^—–\n.!?]{2,45})\s*[—–]\s*(.+)$/);
+  if (dashMatch) {
+    const term = dashMatch[1].replace(/\*+/g, '').replace(/^#+\s*/, '').trim();
+    const definition = dashMatch[2].replace(/\*+/g, '').trim();
+    if (term.length > 0 && definition.length > 0) {
+      return { term, definition };
+    }
+  }
+
+  // 4. Spaced hyphen delimiter: "Payout - 85% прибутку" (MUST have spaces around it to protect words like "Нью-Йорк")
+  const hyphenMatch = clean.match(/^([^\-\n.!?]{2,45})\s+-\s+(.+)$/);
+  if (hyphenMatch) {
+    const term = hyphenMatch[1].replace(/\*+/g, '').replace(/^#+\s*/, '').trim();
+    const definition = hyphenMatch[2].replace(/\*+/g, '').trim();
+    if (term.length > 0 && definition.length > 0) {
+      return { term, definition };
+    }
+  }
+
+  // Single term: only if reasonably short (<= 40 chars) and not a full sentence
+  const term = clean.replace(/\*+/g, '').replace(/^#+\s*/, '').trim();
+  return { term };
+}
+
+/**
+ * Searches and resolves asset URL from imageMap using multiple fallback strategies
+ */
+export function resolveImageUrl(
+  rawSrc: string,
+  imageMap: Record<string, string> = {}
+): string | null {
+  if (!rawSrc) return null;
+  if (rawSrc.startsWith('data:image/') || rawSrc.startsWith('http://') || rawSrc.startsWith('https://')) {
+    return rawSrc;
+  }
+
+  let cleanSrc = rawSrc.replace(/\s+/g, '').trim();
+  try {
+    cleanSrc = decodeURIComponent(cleanSrc);
+  } catch (e) {
+    // Ignore if not a valid URI component
+  }
+
+  const lower = cleanSrc.toLowerCase();
+
+  // 1. Direct match
+  if (imageMap[cleanSrc]) return imageMap[cleanSrc];
+  if (imageMap[lower]) return imageMap[lower];
+
+  // 2. Strip ./
+  const noDot = cleanSrc.replace(/^\.\//, '');
+  if (imageMap[noDot]) return imageMap[noDot];
+  if (imageMap[noDot.toLowerCase()]) return imageMap[noDot.toLowerCase()];
+
+  // 3. Just filename: "up-down.svg"
+  const filename = cleanSrc.split('/').pop() || '';
+  if (imageMap[filename]) return imageMap[filename];
+  if (imageMap[filename.toLowerCase()]) return imageMap[filename.toLowerCase()];
+
+  // 4. Stem without extension: "up-down"
+  const stem = filename.replace(/\.(png|jpg|jpeg|svg|webp|gif|ico|bmp|avif)$/i, '');
+  if (imageMap[stem]) return imageMap[stem];
+  if (imageMap[stem.toLowerCase()]) return imageMap[stem.toLowerCase()];
+
+  // 5. Case-insensitive key lookup across imageMap
+  for (const [key, val] of Object.entries(imageMap)) {
+    const k = key.toLowerCase();
+    const fLower = filename.toLowerCase();
+    const sLower = stem.toLowerCase();
+    if (k === fLower || k === sLower || k.endsWith('/' + fLower) || k.endsWith('/' + sLower)) {
+      return val;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Replaces all inline markdown images with resolved base64 / dataUrl from imageMap
+ */
+export function resolveAllInlineMarkdownImages(
+  markdownText: string,
+  imageMap: Record<string, string> = {}
+): string {
+  if (!markdownText) return '';
+
+  return markdownText.replace(/!\[([\s\S]*?)\]\(([\s\S]*?)\)/g, (fullMatch, alt, rawUrl) => {
+    const resolved = resolveImageUrl(rawUrl.trim(), imageMap) || rawUrl.trim();
+    
+    // Remove newlines from alt text so the image stays on a single line
+    const cleanAlt = alt.replace(/\s*\n\s*/g, ' ').trim();
+    const cleanUrl = resolved.replace(/\s*\n\s*/g, '').trim();
+
+    return `![${cleanAlt}](${cleanUrl})`;
+  });
 }
 
 /**
@@ -118,28 +278,33 @@ function resolveAssetOrDiagram(
 ): { isImage: boolean; src?: string; alt?: string; schemaTitle?: string; schemaSteps?: string[] } {
   const lower = desc.toLowerCase();
 
-  // Check if any asset in imageMap matches keywords
+  // Search keyword in imageMap
   if (imageMap && Object.keys(imageMap).length > 0) {
     for (const [key, url] of Object.entries(imageMap)) {
       const k = key.toLowerCase();
       if (
-        ((lower.includes('payout') || lower.includes('break-even') || lower.includes('win rate') || lower.includes('драбинк') || lower.includes('compounding') || lower.includes('графік') || lower.includes('graph')) && (k.includes('payout') || k.includes('graph') || k.includes('balance') || k.includes('chart'))) ||
-        ((lower.includes('news') || lower.includes('новин')) && k.includes('news-workflow')) ||
-        ((lower.includes('whipsaw') || lower.includes('вертоліт')) && k.includes('news-whipsaw')) ||
-        ((lower.includes('knowledge') || lower.includes('карта') || lower.includes('структур')) && k.includes('knowledge-map')) ||
-        ((lower.includes('candle') || lower.includes('свічк') || lower.includes('ohlc')) && (k.includes('candle') || k.includes('ohlc')))
+        ((lower.includes('payout') || lower.includes('break-even') || lower.includes('win rate')) && (k.includes('payout') || k.includes('break-even'))) ||
+        ((lower.includes('whipsaw') || lower.includes('вертоліт')) && k.includes('whipsaw')) ||
+        ((lower.includes('news') || lower.includes('новин')) && (k.includes('news') || k.includes('workflow') || k.includes('nfp'))) ||
+        ((lower.includes('radar') || lower.includes('радар') || lower.includes('confluence')) && (k.includes('confluence') || k.includes('radar') || k.includes('signal'))) ||
+        ((lower.includes('session') || lower.includes('сесі')) && (k.includes('session') || k.includes('timeline') || k.includes('hour'))) ||
+        ((lower.includes('contract') || lower.includes('опціон') || lower.includes('up-down')) && (k.includes('up-down') || k.includes('contract')))
       ) {
         return { isImage: true, src: url, alt: desc };
       }
     }
-    // If only one or two SVG/image assets exist in the archive, use the first relevant one
-    const allImages = Object.values(imageMap);
-    if (allImages.length === 1 && !lower.includes('ohlc')) {
-      return { isImage: true, src: allImages[0], alt: desc };
+
+    // Direct match with filename
+    const filenameMatch = desc.match(/([a-zA-Z0-9_-]+\.(svg|png|jpg|jpeg|gif|webp))/i);
+    if (filenameMatch) {
+      const resolved = resolveImageUrl(filenameMatch[1], imageMap);
+      if (resolved) {
+        return { isImage: true, src: resolved, alt: desc };
+      }
     }
   }
 
-  // Schema diagram representation for compounding / sequence risk / compounding ladder
+  // Fallback diagram schemas
   if (lower.includes('драбинк') || lower.includes('compounding') || lower.includes('sequence') || lower.includes('траєкторі') || lower.includes('graph')) {
     return {
       isImage: false,
@@ -148,24 +313,7 @@ function resolveAssetOrDiagram(
         'Сценарій A (Ідеальний 3x Win): $5.00 → $5.85 (+$0.85) → $7.42 (+$1.57) → $10.33. Баланс зростає експоненційно.',
         'Сценарій B (Sequence Risk — Win, Win, Loss): $5.00 → $5.85 → $7.42 → Втрата всієї поточної ставки $2.42 = Повернення до вихідного балансу.',
         'Сценарій C (Early Loss — Loss на 1 кроці): $5.00 - $1.00 = $4.00 (-20% депозиту за 1 угоду).',
-        'Висновок моделі: Компаундинг не створює математичної переваги (Expected Value = 0 або мінус через маржу брокера), він лише агресивно збільшує Sequence Risk (ризик послідовності збитків).'
-      ]
-    };
-  }
-
-  // Schema diagram representation
-  if (lower.includes('ohlc') || lower.includes('свічки') || lower.includes('імпульс')) {
-    return {
-      isImage: false,
-      schemaTitle: 'Схема OHLC-свічки та послідовності «Імпульс → Відкат → Продовження»',
-      schemaSteps: [
-        'Open (Відкриття): Базовий рівень старту ціни свічки',
-        'High (Максимум): Верхня тінь — опір продавців',
-        'Low (Мінімум): Нижня тінь — підтримка покупців',
-        'Close (Закриття): Фіксація результату таймфрейму',
-        'Фаза 1 — Імпульс: Спрямований сильний рух кількома свічками',
-        'Фаза 2 — Відкат: Корекція до 38.2% - 50% діапазону',
-        'Фаза 3 — Продовження: Підтвердження тренду та експірація'
+        'Висновок моделі: Компаундинг не створює математичної переваги (Expected Value = 0 або мінус через маржу брокера), він лише агресивно збільшує Sequence Risk.'
       ]
     };
   }
@@ -204,10 +352,19 @@ export function parseStructuredLessonMarkdown(
 ): ParsedLessonResult {
   const { metadata, cleanBody } = extractLessonMetadata(rawContent);
 
+  // Normalize and isolate any markdown image tags:
+  // - Strips leading '#' or '##' (e.g. '#![alt](src)')
+  // - Fixes any linebreaks inside alt text or file paths (e.g. 'assets/up\n\ndown.svg')
+  let normalized = cleanBody.replace(/#*\s*!\[([\s\S]*?)\]\(([\s\S]*?)\)/g, (fullMatch, alt, rawUrl) => {
+    const cleanAlt = alt.replace(/\s+/g, ' ').trim();
+    const cleanUrl = rawUrl.replace(/\s+/g, '').trim();
+    return `\n\n![${cleanAlt}](${cleanUrl})\n\n`;
+  });
+
   // Normalize list gluing: "1. **Title** Text 2. **Title**"
-  const normalized = cleanBody
-    .replace(/([^\n])\s+(\d+\.\s+\*\*)/g, '$1\n\n$2')
-    .replace(/([^\n])\s+([•\-]\s+\*\*)/g, '$1\n\n* $2');
+  normalized = normalized
+    .replace(/([^\n])\s+(#{0,3}\s*\d+\.\s+\*\*)/g, '$1\n\n$2')
+    .replace(/([^\n])\s+(#{0,3}\s*[•\-]\s+\*\*)/g, '$1\n\n$2');
 
   const lines = normalized.split('\n');
   const blocks: Block[] = [];
@@ -231,13 +388,13 @@ export function parseStructuredLessonMarkdown(
     if (/^(мета уроку|ціль уроку|мета|ціль|objective|lesson goal)$/i.test(lower)) {
       return { type: 'objective', title: 'Мета уроку', cleanTitle: clean };
     }
-    if (/^(основний матеріал|матеріал уроку|теорія|основна частина|теоретична частина|main content)$/i.test(lower)) {
+    if (/^(основний матеріал|матеріал уроку|теорія|основна частина|теоретична частина|механіка|main content)$/i.test(lower)) {
       return { type: 'main_content', title: 'Основний матеріал', cleanTitle: clean };
     }
-    if (/^(ключові поняття|основні поняття|ключові терміни|термінологія|key concepts)$/i.test(lower)) {
+    if (/^(ключові поняття|основні поняття|ключові терміни|термінологія|терміни|key concepts)$/i.test(lower)) {
       return { type: 'concepts', title: 'Ключові поняття', cleanTitle: clean };
     }
-    if (/^(приклад|приклади|приклад з практики|навчальний приклад|example|examples)$/i.test(lower)) {
+    if (/^(приклад|приклади|приклад з практики|навчальний приклад|розрахунок|example|examples)$/i.test(lower)) {
       return { type: 'example', title: 'Приклад', cleanTitle: clean };
     }
     if (/^(важливо|увага|застереження|критично важливо|important|warning)$/i.test(lower)) {
@@ -257,6 +414,9 @@ export function parseStructuredLessonMarkdown(
     }
     if (/^(перевір себе|контрольні запитання|самоперевірка|тест|запитання|quiz|self check)$/i.test(lower)) {
       return { type: 'quiz', title: 'Перевір себе', cleanTitle: clean };
+    }
+    if (/^(візуальна пауза|візуал|ілюстрація|схема|графік|visual|visual pause)$/i.test(lower)) {
+      return { type: 'visual', title: 'Візуальна пауза', cleanTitle: clean };
     }
 
     return null;
@@ -294,9 +454,27 @@ export function parseStructuredLessonMarkdown(
       continue;
     }
 
+    // Check if line is a general Markdown heading (#, ##, ###, ####)
+    const isHeadingLine = /^(#{1,4})\s+(.+)$/.test(trimmed);
+
     // Markdown heading level 1 or 2 that could be lesson title
-    if (!lessonTitle && (trimmed.startsWith('# ') || trimmed.startsWith('## '))) {
+    if (!lessonTitle && isHeadingLine && (trimmed.startsWith('# ') || trimmed.startsWith('## '))) {
       lessonTitle = trimmed.replace(/^#{1,2}\s*/, '').trim();
+      continue;
+    }
+
+    // CRITICAL: If this line is a heading, and we are currently inside a specific callout section
+    // (such as 'concepts', 'objective', 'example', 'important', 'mistakes', 'practice', 'summary', 'quiz'),
+    // the callout section MUST END immediately, so subsequent content and headings are not trapped!
+    if (isHeadingLine && currentSection.sectionType !== 'general' && currentSection.sectionType !== 'main_content') {
+      if (currentSection.lines.some(l => l.trim().length > 0)) {
+        sections.push(currentSection);
+      }
+      currentSection = {
+        sectionType: 'main_content',
+        sectionTitle: '',
+        lines: [rawLine]
+      };
       continue;
     }
 
@@ -329,17 +507,50 @@ export function parseStructuredLessonMarkdown(
 
       case 'concepts': {
         const rawItems = sec.lines.filter(l => l.trim().length > 0);
-        const conceptList = rawItems.map(cleanConceptItem).filter(Boolean);
-        blocks.push({
-          id: blockId,
-          type: 'callout',
-          content: {
-            type: 'concepts',
-            title: sec.sectionTitle,
-            concepts: conceptList.length > 0 ? conceptList : [secContent],
-            text: secContent
+        const parsedConcepts: ParsedConcept[] = [];
+        const extraLines: string[] = [];
+
+        for (const line of rawItems) {
+          const tLine = line.trim();
+          // If a markdown heading was in here, it shouldn't be a concept
+          if (/^#{1,6}\s+/.test(tLine)) {
+            extraLines.push(line);
+            continue;
           }
-        });
+
+          const parsed = cleanConceptItem(tLine);
+          // Only treat as concept if it has a real definition, or is a concise keyword (<= 35 chars, no period, <= 4 words)
+          const isConciseTag = !parsed.definition && parsed.term.length > 0 && parsed.term.length <= 35 && !/[.!?]/.test(parsed.term) && parsed.term.split(/\s+/).length <= 4;
+
+          if (parsed.definition || isConciseTag) {
+            parsedConcepts.push(parsed);
+          } else {
+            extraLines.push(line);
+          }
+        }
+
+        if (parsedConcepts.length > 0) {
+          blocks.push({
+            id: blockId,
+            type: 'callout',
+            content: {
+              type: 'concepts',
+              title: sec.sectionTitle,
+              concepts: parsedConcepts.map(c => c.term),
+              parsedConcepts,
+              text: parsedConcepts.filter(c => c.definition).map(c => `**${c.term}**: ${c.definition}`).join('\n\n')
+            }
+          });
+        }
+
+        // If there were extra paragraphs/content in this section, emit them as normal paragraphs so nothing is lost
+        if (extraLines.length > 0) {
+          blocks.push({
+            id: `p-${Date.now()}-${secIdx}-${Math.random().toString(36).substring(2, 6)}`,
+            type: 'paragraph',
+            content: { text: extraLines.join('\n\n') }
+          });
+        }
         break;
       }
 
@@ -368,7 +579,10 @@ export function parseStructuredLessonMarkdown(
 
       case 'mistakes': {
         const rawItems = sec.lines.filter(l => l.trim().length > 0);
-        const mistakeItems = rawItems.map(l => cleanConceptItem(l)).filter(Boolean);
+        const mistakeItems = rawItems
+          .map(l => cleanConceptItem(l).term)
+          .filter(Boolean);
+
         blocks.push({
           id: blockId,
           type: 'callout',
@@ -418,7 +632,11 @@ export function parseStructuredLessonMarkdown(
         break;
 
       case 'quiz': {
-        const rawQuestions = sec.lines.filter(l => l.trim().length > 0).map(cleanConceptItem);
+        const rawQuestions = sec.lines
+          .filter(l => l.trim().length > 0)
+          .map(l => cleanConceptItem(l).term)
+          .filter(Boolean);
+
         blocks.push({
           id: blockId,
           type: 'quiz',
@@ -432,9 +650,44 @@ export function parseStructuredLessonMarkdown(
         break;
       }
 
+      case 'visual': {
+        const secText = sec.lines.join('\n');
+        const imgMatch = secText.match(/#*\s*!\[([\s\S]*?)\]\(([\s\S]*?)\)/);
+        if (imgMatch) {
+          const alt = imgMatch[1].replace(/\s+/g, ' ').trim();
+          const rawSrc = imgMatch[2].replace(/\s+/g, '').trim();
+          const resolvedSrc = resolveImageUrl(rawSrc, imageMap) || rawSrc;
+          blocks.push({
+            id: blockId,
+            type: 'image',
+            content: { url: resolvedSrc, caption: alt || sec.sectionTitle }
+          });
+        } else {
+          const schema = resolveAssetOrDiagram(secText, imageMap);
+          if (schema.isImage && schema.src) {
+            blocks.push({
+              id: blockId,
+              type: 'image',
+              content: { url: schema.src, caption: schema.alt || sec.sectionTitle }
+            });
+          } else {
+            blocks.push({
+              id: blockId,
+              type: 'callout',
+              content: {
+                type: 'schema',
+                title: schema.schemaTitle,
+                steps: schema.schemaSteps,
+                text: secText
+              }
+            });
+          }
+        }
+        break;
+      }
+
       case 'main_content':
       default: {
-        // Detailed parsing for sub-blocks inside main content
         const subLines = sec.lines;
         let pBuffer: string[] = [];
         let inCode = false;
@@ -445,6 +698,32 @@ export function parseStructuredLessonMarkdown(
           if (pBuffer.length > 0) {
             const text = pBuffer.join('\n').trim();
             if (text) {
+              // Check if pBuffer contains one or more markdown images (e.g. ![alt](src) or #![alt](src))
+              const imgMatches = [...text.matchAll(/#*\s*!\[([\s\S]*?)\]\(([\s\S]*?)\)/g)];
+              if (imgMatches.length > 0) {
+                let remainingText = text;
+                for (const match of imgMatches) {
+                  const alt = match[1].replace(/\s+/g, ' ').trim();
+                  const rawSrc = match[2].replace(/\s+/g, '').trim();
+                  const resolvedSrc = resolveImageUrl(rawSrc, imageMap) || rawSrc;
+                  blocks.push({
+                    id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                    type: 'image',
+                    content: { url: resolvedSrc, caption: alt }
+                  });
+                  remainingText = remainingText.replace(match[0], '').trim();
+                }
+                if (remainingText) {
+                  blocks.push({
+                    id: `p-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                    type: 'paragraph',
+                    content: { text: remainingText }
+                  });
+                }
+                pBuffer = [];
+                return;
+              }
+
               // Check for [TODO: IMAGE], [TODO: GRAPH], [TODO: DIAGRAM]
               if (text.includes('TODO: IMAGE') || text.includes('[TODO: IMAGE]') || text.includes('TODO: GRAPH') || text.includes('[TODO: GRAPH]') || text.includes('TODO: DIAGRAM')) {
                 const schema = resolveAssetOrDiagram(text, imageMap);
@@ -505,13 +784,13 @@ export function parseStructuredLessonMarkdown(
             continue;
           }
 
-          // Markdown Image ![alt](src)
-          const imgMatch = trimS.match(/!\[(.*?)\]\((.*?)\)/);
-          if (imgMatch) {
+          // Standalone Markdown Image ![alt](src) or #![alt](src)
+          const standaloneImgMatch = trimS.match(/^#*\s*!\[([\s\S]*?)\]\(([\s\S]*?)\)$/);
+          if (standaloneImgMatch) {
             flushP();
-            const alt = imgMatch[1];
-            const rawSrc = imgMatch[2];
-            const resolvedSrc = imageMap[rawSrc] || imageMap[rawSrc.replace(/^\.\//, '')] || imageMap[rawSrc.split('/').pop() || ''] || rawSrc;
+            const alt = standaloneImgMatch[1].replace(/\s+/g, ' ').trim();
+            const rawSrc = standaloneImgMatch[2].replace(/\s+/g, '').trim();
+            const resolvedSrc = resolveImageUrl(rawSrc, imageMap) || rawSrc;
             blocks.push({
               id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
               type: 'image',
@@ -520,14 +799,15 @@ export function parseStructuredLessonMarkdown(
             continue;
           }
 
-          // Heading inside main content
-          if (trimS.startsWith('## ') || trimS.startsWith('### ')) {
+          // Heading inside main content (levels 1, 2, 3, 4)
+          const headingMatch = trimS.match(/^(#{1,4})\s+(.+)$/);
+          if (headingMatch) {
             flushP();
-            const lvl = trimS.startsWith('## ') ? 2 : 3;
+            const lvl = headingMatch[1].length as 1 | 2 | 3 | 4;
             blocks.push({
               id: `h-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
               type: 'heading',
-              content: { level: lvl, text: trimS.replace(/^#{2,3}\s*/, '').trim() }
+              content: { level: lvl, text: headingMatch[2].trim() }
             });
             continue;
           }

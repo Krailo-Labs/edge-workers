@@ -4,7 +4,8 @@ import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/shared/utils';
-import { ExternalLink, Check, Copy } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
+import { cleanRawUnicodeAndEntities } from '@/shared/utils/course-parser';
 
 interface MarkdownRendererProps {
   content: string;
@@ -14,21 +15,20 @@ interface MarkdownRendererProps {
 /**
  * Normalizes raw or imported text where multiple numbered/bulleted items
  * might have been compressed onto a single line without line breaks.
- * Example: "1. **Рівень 0:** Текст 2. **Рівень 1:** Текст" -> proper markdown list
  */
 export function normalizeMarkdown(text: string): string {
   if (!text) return '';
 
-  let normalized = text;
+  let normalized = cleanRawUnicodeAndEntities(text);
 
   // Split numbered items that are glued together on a single line: "text 2. **Title**" -> "text\n\n2. **Title**"
-  normalized = normalized.replace(/([^\n])\s+(\d+\.\s+\*\*)/g, '$1\n\n$2');
+  normalized = normalized.replace(/([^\n])\s+(#{0,3}\s*\d+\.\s+\*\*)/g, '$1\n\n$2');
   
   // Split standard numbered lists if stuck: "text 2. Title"
-  normalized = normalized.replace(/([^\n])\s+(\d+\.\s+[A-ZА-ЯІЇЄ])/g, '$1\n\n$2');
+  normalized = normalized.replace(/([.!?])\s+(#{0,3}\s*\d+\.\s+[A-ZА-ЯІЇЄҐ])/g, '$1\n\n$2');
 
   // Split bullet points stuck on single line: "text • **Title**" or "text - **Title**"
-  normalized = normalized.replace(/([^\n])\s+[•\-]\s+(\*\*[^*]+\*\*)/g, '$1\n\n* $2');
+  normalized = normalized.replace(/([^\n])\s+(#{0,3}\s*[•\-]\s+\*\*)/g, '$1\n\n$2');
 
   // Ensure headings have space after hashes if missing: "##Title" -> "## Title"
   normalized = normalized.replace(/^(#{1,6})([^\s#])/gm, '$1 $2');
@@ -37,12 +37,27 @@ export function normalizeMarkdown(text: string): string {
 }
 
 export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
-  const processedContent = useMemo(() => normalizeMarkdown(content), [content]);
+  const { processedContent, extractedImages } = useMemo(() => {
+    let text = normalizeMarkdown(content);
+    const images: Record<string, string> = {};
+    let imgCounter = 0;
+
+    // Extract all images (handling potential '#![alt](url)' and linebreaks in alt/url)
+    text = text.replace(/#*\s*!\[([\s\S]*?)\]\(([\s\S]*?)\)/g, (match, alt, url) => {
+      const id = `__IMG_${imgCounter++}__`;
+      images[id] = url.replace(/\s+/g, '').trim();
+      const safeAlt = alt.replace(/\s+/g, ' ').trim();
+      return `\n\n![${safeAlt}](${id})\n\n`;
+    });
+
+    return { processedContent: text, extractedImages: images };
+  }, [content]);
 
   return (
     <div className={cn("markdown-content w-full max-w-full overflow-x-hidden break-words [overflow-wrap:anywhere]", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        urlTransform={(value: string) => value}
         components={{
           h1: ({ children, ...props }) => (
             <h1 
@@ -118,7 +133,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
             const isInline = !codeClassName && typeof children === 'string' && !children.includes('\n');
             if (isInline) {
               return (
-                <code className="bg-stone-100 text-emerald-800 font-mono text-xs sm:text-[13px] px-1.5 py-0.5 rounded-md border border-stone-200/80 font-semibold break-all" {...props}>
+                <code className="bg-stone-100 text-emerald-800 font-mono text-xs sm:text-[13px] px-1.5 py-0.5 rounded-md border border-stone-200/80 font-semibold break-words [overflow-wrap:anywhere]" {...props}>
                   {children}
                 </code>
               );
@@ -173,7 +188,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
               href={href} 
               target="_blank" 
               rel="noopener noreferrer" 
-              className="text-emerald-600 hover:text-emerald-700 underline font-medium inline-flex items-center gap-1 transition-colors break-all" 
+              className="text-emerald-600 hover:text-emerald-700 underline font-medium inline-flex items-center gap-1 transition-colors break-words [overflow-wrap:anywhere]" 
               {...props}
             >
               <span>{children}</span>
@@ -183,23 +198,27 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
           hr: ({ ...props }) => (
             <hr className="my-6 sm:my-8 border-stone-200" {...props} />
           ),
-          img: ({ src, alt, ...props }) => (
-            <figure className="my-5 max-w-full">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img 
-                src={src} 
-                alt={alt || 'Зображення'} 
-                className="w-full max-h-[500px] object-contain rounded-2xl border border-stone-200 bg-white shadow-2xs mx-auto" 
-                loading="lazy" 
-                {...props} 
-              />
-              {alt && (
-                <figcaption className="text-center text-xs text-stone-500 mt-2 italic px-2">
-                  {alt}
-                </figcaption>
-              )}
-            </figure>
-          ),
+          img: ({ src, alt, ...props }) => {
+            const srcStr = typeof src === 'string' ? src : '';
+            const finalSrc = srcStr && extractedImages[srcStr] ? extractedImages[srcStr] : srcStr;
+            return (
+              <figure className="my-5 max-w-full">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img 
+                  src={finalSrc} 
+                  alt={alt || 'Зображення'} 
+                  className="w-full max-h-[500px] object-contain rounded-2xl border border-stone-200 bg-white shadow-2xs mx-auto" 
+                  loading="lazy" 
+                  {...props} 
+                />
+                {alt && (
+                  <figcaption className="text-center text-xs text-stone-500 mt-2 italic px-2">
+                    {alt}
+                  </figcaption>
+                )}
+              </figure>
+            );
+          },
         }}
       >
         {processedContent}

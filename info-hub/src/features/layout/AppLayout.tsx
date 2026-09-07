@@ -13,30 +13,30 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
 
-  // Закриваємо бокове меню при переході між сторінками на мобільних
+  // Закриваємо бокове меню та скидаємо будь-які залишкові стилі блокування скролу
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsOpen(false);
+    if (typeof window !== 'undefined') {
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.left = '';
+      document.body.style.right = '';
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
   }, [pathname]);
 
-  // Надійне блокування скролу фонової сторінки на мобільних при відкритому меню
+  // Безпечне блокування скролу фонової сторінки на мобільних при відкритому меню
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (isOpen) {
-      const scrollY = window.scrollY;
-      document.body.style.position = 'fixed';
-      document.body.style.top = `-${scrollY}px`;
-      document.body.style.left = '0';
-      document.body.style.right = '0';
       document.body.style.overflow = 'hidden';
       return () => {
-        document.body.style.position = '';
-        document.body.style.top = '';
-        document.body.style.left = '';
-        document.body.style.right = '';
         document.body.style.overflow = '';
-        window.scrollTo(0, scrollY);
       };
+    } else {
+      document.body.style.overflow = '';
     }
   }, [isOpen]);
 
@@ -53,7 +53,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <Sidebar isOpen={isOpen} onClose={() => setIsOpen(false)} />
       </Suspense>
       
-      <div className="flex-1 flex flex-col min-h-screen max-w-full w-full relative">
+      <div className="flex-1 flex flex-col min-h-screen max-w-full w-full relative min-w-0">
         {/* Мобільний фіксований хедер - залізобетонна фіксація */}
         <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white/95 backdrop-blur-md border-b border-stone-200/90 z-40 flex items-center justify-between px-4 shadow-2xs">
           <Link href="/" className="flex items-center gap-2" onClick={() => setIsOpen(false)}>
@@ -82,7 +82,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         
-        <main className="flex-1 flex flex-col w-full max-w-full pt-14 md:pt-0">
+        <main className="flex-1 flex flex-col w-full max-w-full pt-14 md:pt-0 min-w-0">
           {children}
         </main>
       </div>

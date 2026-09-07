@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Default admin password or environment variable ADMIN_PASSWORD
-    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin70051';
+    const expectedPassword = process.env.ADMIN_PASSWORD;
 
     if (password.trim() === expectedPassword.trim()) {
       return NextResponse.json({ 

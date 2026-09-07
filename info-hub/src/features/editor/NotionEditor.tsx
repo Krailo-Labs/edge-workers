@@ -299,7 +299,7 @@ function example() {
       } else if (tag === 'figure' || tag === 'img') {
         const img = el.querySelector('img') || (el.tagName === 'IMG' ? (el as HTMLImageElement) : null);
         if (img) {
-          blocks.push({ id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, type: 'image', content: { url: img.src, caption: el.querySelector('figcaption')?.textContent || '' } });
+          blocks.push({ id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, type: 'image', content: { url: img.getAttribute('src') || img.src, caption: el.querySelector('figcaption')?.textContent || '' } });
         }
       } else if (el.classList.contains('bg-amber-50') || el.textContent?.includes('💡')) {
         blocks.push({ id: `callout-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, type: 'callout', content: { text, type: 'important' } });
