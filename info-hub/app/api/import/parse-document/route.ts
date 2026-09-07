@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PDFParse } from 'pdf-parse';
-import mammoth from 'mammoth';
+const mammoth = require('mammoth');
 import { formatPdfExtractedText, extractDocumentTitle, splitDocumentIntoChapters } from '@/shared/utils/document-parser';
 import { cleanRawUnicodeAndEntities } from '@/shared/utils/course-parser';
 
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     const filename = file.name || 'document';
     const lowerName = filename.toLowerCase();
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const buffer = new Uint8Array(arrayBuffer);
 
     let extractedMarkdown = '';
     let pageCount = 1;
